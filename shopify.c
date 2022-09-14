@@ -180,8 +180,9 @@ static inline int redirect(const char *host, const char *id,
 
 enum MHD_Result shopify_respond(struct shopify_param params[], const char *url,
 		const char *redir_url, const char *app_url, const char *app_id,
-		const char *key, const char *secret_key, const char *dir,
-		struct MHD_Connection *conn, struct MHD_Response **resp)
+		const char *key, const char *secret_key, const char *toml_path,
+		const char *html_path, struct MHD_Connection *conn,
+		struct MHD_Response **resp)
 {
 	int nparams = 0;
 	while (params[nparams].key)
@@ -205,7 +206,6 @@ enum MHD_Result shopify_respond(struct shopify_param params[], const char *url,
 	qsort(sessions, nsessions, sizeof(struct session), sessioncmp);
 	struct session *session = bsearch(&(struct session){ shop }, sessions,
 			nsessions, sizeof(struct session), sessioncmp);
-	const size_t dir_len = strlen(dir);
 	const size_t key_len = strlen(key);
 	char frame[FRAME_LEN + shop_len + 1];
 	sprintf(frame, FRAME, shop);
@@ -223,11 +223,7 @@ enum MHD_Result shopify_respond(struct shopify_param params[], const char *url,
 		ret = redirect(decoded_host, app_id, resp, conn);
 	} else if (session && session->token) {
 		if (embedded) {
-			static const char *rel_path
-				= "/web/frontend/index.html";
-			char abs_path[dir_len + strlen(rel_path) + 1];
-			sprintf(abs_path, "%s%s", dir, rel_path);
-			int fd = open(abs_path, O_RDONLY);
+			int fd = open(toml_path, O_RDONLY);
 			struct stat sb;
 			fstat(fd, &sb);
 			char index[sb.st_size + 1];
@@ -242,11 +238,8 @@ enum MHD_Result shopify_respond(struct shopify_param params[], const char *url,
 			ret = redirect(decoded_host, app_id, resp, conn);
 	} else {
 		const size_t decoded_host_len = strlen(decoded_host);
-		static const char *rel_path = "/shopify.app.toml";
-		char abs_path[dir_len + strlen(rel_path) + 1];
-		sprintf(abs_path, "%s%s", dir, rel_path);
 		char *scopes = NULL;
-		config_getscopes(abs_path, &scopes);
+		config_getscopes(html_path, &scopes);
 		const size_t scopes_len = strlen(scopes);
 		static const size_t nonce_len = 64;
 		char nonce[nonce_len + 1];

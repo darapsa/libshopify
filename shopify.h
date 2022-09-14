@@ -19,8 +19,9 @@ bool shopify_valid(struct MHD_Connection *conn, const char *url,
 		struct shopify_param *params[]);
 enum MHD_Result shopify_respond(struct shopify_param params[], const char *url,
 		const char *redir_url, const char *app_url, const char *app_id,
-		const char *key, const char *secret_key, const char *dir,
-		struct MHD_Connection *conn, struct MHD_Response **resp);
+		const char *key, const char *secret_key, const char *toml_path,
+		const char *html_path, struct MHD_Connection *conn,
+		struct MHD_Response **resp);
 void shopify_cleanup();
 
 #ifdef __cplusplus
