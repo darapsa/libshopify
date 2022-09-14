@@ -53,6 +53,14 @@ extern inline void request_token(const char *, const char *, const char *,
 extern inline void request_cleanup();
 extern inline void token_parse(char *, struct session *);
 
+void shopify_init()
+{
+	crypt_init();
+	request_init();
+	sessions = malloc(sizeof(struct session));
+	sessions[0].shop = NULL;
+}
+
 static enum MHD_Result getparam(void *cls, enum MHD_ValueKind kind,
 		const char *key, const char *val)
 {
@@ -72,12 +80,13 @@ static enum MHD_Result getparam(void *cls, enum MHD_ValueKind kind,
 	return MHD_YES;
 }
 
-void shopify_init()
+static inline void clear(struct shopify_param params[])
 {
-	crypt_init();
-	request_init();
-	sessions = malloc(sizeof(struct session));
-	sessions[0].shop = NULL;
+	int i = 0;
+	while (params[i].key) {
+		free(params[i].val);
+		free(params[i++].key);
+	}
 }
 
 static int paramcmp(const void *param1, const void *param2)
@@ -90,15 +99,6 @@ static int sessioncmp(const void *session1, const void *session2)
 {
 	return strcmp(((struct session *)session1)->shop,
 			((struct session *)session2)->shop);
-}
-
-static inline void clear(struct shopify_param params[])
-{
-	int i = 0;
-	while (params[i].key) {
-		free(params[i].val);
-		free(params[i++].key);
-	}
 }
 
 bool shopify_valid(struct MHD_Connection *conn, const char *url,
