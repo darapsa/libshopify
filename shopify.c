@@ -223,7 +223,7 @@ enum MHD_Result shopify_respond(struct shopify_param params[], const char *url,
 		ret = redirect(decoded_host, app_id, resp, conn);
 	} else if (session && session->token) {
 		if (embedded) {
-			int fd = open(toml_path, O_RDONLY);
+			int fd = open(html_path, O_RDONLY);
 			struct stat sb;
 			fstat(fd, &sb);
 			char index[sb.st_size + 1];
@@ -239,7 +239,7 @@ enum MHD_Result shopify_respond(struct shopify_param params[], const char *url,
 	} else {
 		const size_t decoded_host_len = strlen(decoded_host);
 		char *scopes = NULL;
-		config_getscopes(html_path, &scopes);
+		config_getscopes(toml_path, &scopes);
 		const size_t scopes_len = strlen(scopes);
 		static const size_t nonce_len = 64;
 		char nonce[nonce_len + 1];
