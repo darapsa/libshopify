@@ -131,12 +131,13 @@ bool shopify_valid(struct MHD_Connection *conn, const char *url,
 		const char *val = (*params)[i].val;
 		if (strcmp(key, "hmac")) {
 			size_t query_len = query ? strlen(query) : 0;
-			bool last = i == nparams - 1;
+			bool ampersand = i != nparams - 1;
 			query = realloc(query, query_len + strlen(key)
-					+ strlen(val) + !last + 2);
+					+ strlen("=") + strlen(val) + ampersand
+					+ 1);
 			query[query_len] = '\0';
 			sprintf(query, "%s%s=%s%s", query, key, val,
-					last ? "" : "&");
+					ampersand ? "&" : "");
 		}
 	}
 	char *hmac = NULL;
