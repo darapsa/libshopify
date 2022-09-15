@@ -12,15 +12,16 @@ static inline bool crypt_maccmp(const char *key, const char *query,
 	gcry_mac_open(&hd, GCRY_MAC_HMAC_SHA256, GCRY_MAC_FLAG_SECURE, NULL);
 	gcry_mac_setkey(hd, key, strlen(key));
 	gcry_mac_write(hd, query, strlen(query));
-	size_t hmac_sha256_len = 32;
-	unsigned char hmac_sha256[hmac_sha256_len + 1];
-	gcry_mac_read(hd, hmac_sha256, &hmac_sha256_len);
+	static size_t hmacsha256_len = 32;
+	unsigned char hmacsha256[hmacsha256_len + 1];
+	gcry_mac_read(hd, hmacsha256, &hmacsha256_len);
 	gcry_mac_close(hd);
-	char hmac_sha256_str[65] = { [0] = '\0' };
-	for (int i = 0; i < hmac_sha256_len; i++)
-		sprintf(hmac_sha256_str, "%s%02x", hmac_sha256_str,
-				hmac_sha256[i]);
-	return !strcmp(hmac, hmac_sha256_str);
+	char hmacsha256_str[hmacsha256_len * 2 + 1];
+	hmacsha256_str[0] ='\0';
+	for (int i = 0; i < hmacsha256_len; i++)
+		sprintf(hmacsha256_str, "%s%02x", hmacsha256_str,
+				hmacsha256[i]);
+	return !strcmp(hmac, hmacsha256_str);
 }
 
 static inline void crypt_getnonce(char *string, const size_t string_len)
