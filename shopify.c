@@ -21,7 +21,7 @@
 	"\t\t<meta charset=\"utf-8\"/>\n"\
 	"\t</head>\n"\
 	"\t<body>\n"\
-	"\t\t<script src=\"https://unpkg.com/@shopify/app-bridge@3\"/>\n"\
+	"\t\t<script src=\"https://unpkg.com/@shopify/app-bridge@3\">\n"\
 	"\t\t</script>\n"\
 	"\t\t<script>\n"\
 	"\t\t\tvar appBridge = window['app-bridge'];\n"\
