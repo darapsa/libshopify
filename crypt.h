@@ -24,12 +24,12 @@ static inline bool crypt_maccmp(const char *key, const char *query,
 	return !strcmp(hmac, hmacsha256_str);
 }
 
-static inline void crypt_getnonce(char *string, const size_t string_len)
+static inline void crypt_getnonce(char buf[], const size_t buf_len)
 {
-	string[0] = '\0';
-	const size_t nonce_len = string_len / 2;
+	buf[0] = '\0';
+	const size_t nonce_len = buf_len / 2;
 	unsigned char nonce[nonce_len + 1];
 	gcry_create_nonce(nonce, nonce_len);
 	for (int i = 0; i < nonce_len; i++)
-		sprintf(string, "%s%02x", string, nonce[i]);
+		sprintf(buf, "%s%02x", buf, nonce[i]);
 }

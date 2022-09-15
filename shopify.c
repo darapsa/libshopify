@@ -43,7 +43,7 @@
 
 extern inline void crypt_init();
 extern inline bool crypt_maccmp(const char *, const char *, const char *);
-extern inline void crypt_getnonce(char *, const size_t);
+extern inline void crypt_getnonce(char [], const size_t);
 extern inline bool regex_match(const char *);
 extern inline void base64_decode(unsigned char *, char **);
 extern inline void config_getscopes(const char *, char **);
