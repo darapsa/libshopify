@@ -89,16 +89,9 @@ static inline void clear(struct shopify_param params[])
 	}
 }
 
-static int paramcmp(const void *param1, const void *param2)
+static int keycmp(const void *struct1, const void *struct2)
 {
-	return strcmp(((struct shopify_param *)param1)->key,
-			((struct shopify_param *)param2)->key);
-}
-
-static int sessioncmp(const void *session1, const void *session2)
-{
-	return strcmp(((struct session *)session1)->shop,
-			((struct session *)session2)->shop);
+	return strcmp(*(char **)struct1, *(char **)struct2);
 }
 
 bool shopify_valid(struct MHD_Connection *conn, const char *url,
@@ -113,11 +106,11 @@ bool shopify_valid(struct MHD_Connection *conn, const char *url,
 		nparams++;
 	if (!nparams)
 		return false;
-	qsort(*params, nparams, sizeof(struct shopify_param), paramcmp);
+	qsort(*params, nparams, sizeof(struct shopify_param), keycmp);
 	char *shop = NULL;
 	struct shopify_param *param = bsearch(&(struct shopify_param)
 			{ "shop" }, *params, nparams,
-			sizeof(struct shopify_param), paramcmp);
+			sizeof(struct shopify_param), keycmp);
 	if (param)
 		shop = param->val;
 	if (!shop || !regex_match(shop)) {
@@ -142,7 +135,7 @@ bool shopify_valid(struct MHD_Connection *conn, const char *url,
 	}
 	char *hmac = NULL;
 	param = bsearch(&(struct shopify_param){ "hmac" }, *params, nparams,
-				sizeof(struct shopify_param), paramcmp);
+				sizeof(struct shopify_param), keycmp);
 	if (param)
 		hmac = param->val;
 	if (!hmac || !crypt_maccmp(secret_key, query, hmac)) {
@@ -155,13 +148,13 @@ bool shopify_valid(struct MHD_Connection *conn, const char *url,
 		return true;
 	char *state = ((struct shopify_param *)bsearch(&(struct shopify_param)
 				{ "state" }, *params, nparams,
-				sizeof(struct shopify_param), paramcmp))->val;
+				sizeof(struct shopify_param), keycmp))->val;
 	int nsessions = 0;
 	while (sessions[nsessions].shop)
 		nsessions++;
-	qsort(sessions, nsessions, sizeof(struct session), sessioncmp);
+	qsort(sessions, nsessions, sizeof(struct session), keycmp);
 	struct session *session = bsearch(&(struct session){ shop }, sessions,
-			nsessions, sizeof(struct session), sessioncmp);
+			nsessions, sizeof(struct session), keycmp);
 	if (strcmp(state, session->nonce)) {
 		clear(*params);
 		return false;
@@ -190,23 +183,23 @@ enum MHD_Result shopify_respond(struct shopify_param params[], const char *url,
 		nparams++;
 	char *shop = ((struct shopify_param *)bsearch(&(struct shopify_param)
 				{ "shop" }, params, nparams,
-				sizeof(struct shopify_param), paramcmp))->val;
+				sizeof(struct shopify_param), keycmp))->val;
 	const size_t shop_len = strlen(shop);
 	char *host = ((struct shopify_param *)bsearch(&(struct shopify_param)
 				{ "host" }, params, nparams,
-				sizeof(struct shopify_param), paramcmp))->val;
+				sizeof(struct shopify_param), keycmp))->val;
 	struct shopify_param *param = bsearch(&(struct shopify_param)
 			{ "embedded" }, params, nparams,
-			sizeof(struct shopify_param), paramcmp);
+			sizeof(struct shopify_param), keycmp);
 	bool embedded = param && !strcmp(param->val, "1");
 	char *decoded_host;
 	base64_decode((unsigned char *)host, &decoded_host);
 	int nsessions = 0;
 	while (sessions[nsessions].shop)
 		nsessions++;
-	qsort(sessions, nsessions, sizeof(struct session), sessioncmp);
+	qsort(sessions, nsessions, sizeof(struct session), keycmp);
 	struct session *session = bsearch(&(struct session){ shop }, sessions,
-			nsessions, sizeof(struct session), sessioncmp);
+			nsessions, sizeof(struct session), keycmp);
 	const size_t key_len = strlen(key);
 	char frame[FRAME_LEN + shop_len + 1];
 	sprintf(frame, FRAME, shop);
@@ -216,7 +209,7 @@ enum MHD_Result shopify_respond(struct shopify_param params[], const char *url,
 					&(struct shopify_param){ "code" },
 					params, nparams,
 					sizeof(struct shopify_param),
-					paramcmp))->val;
+					keycmp))->val;
 		char *token = NULL;
 		request_token(decoded_host, key, secret_key, code, &token);
 		token_parse(token, session);
