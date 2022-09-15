@@ -51,7 +51,7 @@ extern inline void request_init();
 extern inline void request_token(const char *, const char *, const char *,
 		const char *, char **);
 extern inline void request_cleanup();
-extern inline void token_parse(char *, struct session *);
+extern inline void token_parse(const char *, struct session *);
 
 void shopify_init()
 {
@@ -80,7 +80,7 @@ static enum MHD_Result getparam(void *cls, enum MHD_ValueKind kind,
 	return MHD_YES;
 }
 
-static inline void clear(struct shopify_param params[])
+static inline void clear(const struct shopify_param params[])
 {
 	int i = 0;
 	while (params[i].key) {
@@ -163,7 +163,7 @@ bool shopify_valid(struct MHD_Connection *conn, const char *url,
 }
 
 static inline int redirect(const char *host, const char *id,
-		struct MHD_Response **resp, struct MHD_Connection *conn)
+		struct MHD_Connection *conn, struct MHD_Response **resp)
 {
 	char url[EMBEDDEDAPP_URL_LEN + strlen(host) + strlen(id) + 1];
 	sprintf(url, EMBEDDEDAPP_URL, host, id);
@@ -172,11 +172,11 @@ static inline int redirect(const char *host, const char *id,
 	return MHD_queue_response(conn, MHD_HTTP_PERMANENT_REDIRECT, *resp);
 }
 
-enum MHD_Result shopify_respond(struct shopify_param params[], const char *url,
-		const char *redir_url, const char *app_url, const char *app_id,
-		const char *key, const char *secret_key, const char *toml_path,
-		const char *html_path, struct MHD_Connection *conn,
-		struct MHD_Response **resp)
+enum MHD_Result shopify_respond(const struct shopify_param params[],
+		const char *url, const char *redir_url, const char *app_url,
+		const char *app_id, const char *key, const char *secret_key,
+		const char *toml_path, const char *html_path,
+		struct MHD_Connection *conn, struct MHD_Response **resp)
 {
 	int nparams = 0;
 	while (params[nparams].key)
@@ -214,7 +214,7 @@ enum MHD_Result shopify_respond(struct shopify_param params[], const char *url,
 		request_token(decoded_host, key, secret_key, code, &token);
 		token_parse(token, session);
 		free(token);
-		ret = redirect(decoded_host, app_id, resp, conn);
+		ret = redirect(decoded_host, app_id, conn, resp);
 	} else if (session && session->token) {
 		if (embedded) {
 			int fd = open(html_path, O_RDONLY);
@@ -229,7 +229,7 @@ enum MHD_Result shopify_respond(struct shopify_param params[], const char *url,
 					"Content-Security-Policy", frame);
 			ret = MHD_queue_response(conn, MHD_HTTP_OK, *resp);
 		} else
-			ret = redirect(decoded_host, app_id, resp, conn);
+			ret = redirect(decoded_host, app_id, conn, resp);
 	} else {
 		const size_t decoded_host_len = strlen(decoded_host);
 		char *scopes = NULL;
