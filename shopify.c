@@ -45,7 +45,7 @@ extern inline void crypt_init();
 extern inline bool crypt_maccmp(const char *, const char *, const char *);
 extern inline void crypt_getnonce(char [], const size_t);
 extern inline bool regex_match(const char *);
-extern inline void base64_decode(unsigned char *, char **);
+extern inline void base64_decode(const char *, char **);
 extern inline void config_getscopes(const char *, char **);
 extern inline void request_init();
 extern inline void request_token(const char *, const char *, const char *,
@@ -193,7 +193,7 @@ enum MHD_Result shopify_respond(const struct shopify_param params[],
 			sizeof(struct shopify_param), keycmp);
 	bool embedded = param && !strcmp(param->val, "1");
 	char *decoded_host;
-	base64_decode((unsigned char *)host, &decoded_host);
+	base64_decode(host, &decoded_host);
 	int nsessions = 0;
 	while (sessions[nsessions].shop)
 		nsessions++;
