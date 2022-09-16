@@ -9,12 +9,12 @@
 #include "session.h"
 #include "token.h"
 
-#define AUTHORIZE_URL \
+#define AUTH_URL \
 	"https://%s/oauth/authorize?client_id=%s&scope=%s&redirect_uri=%s%s"\
 	"&state=%s"
-#define AUTHORIZE_URL_LEN strlen(AUTHORIZE_URL) - strlen("%s") * 6
+#define AUTH_URL_LEN strlen(AUTH_URL) - strlen("%s") * 6
 
-#define PAGE \
+#define REDIR_PAGE \
 	"<!DOCTYPE html>\n"\
 	"<html lang=\"en\">\n"\
 	"\t<head>\n"\
@@ -33,13 +33,13 @@
 	"\t\t</script>\n"\
 	"\t</body>\n"\
 	"</html>\n"
-#define PAGE_LEN strlen(PAGE) - strlen("%s") * 3
+#define REDIR_PAGE_LEN strlen(REDIR_PAGE) - strlen("%s") * 3
 
-#define FRAME "frame-ancestors https://%s https://admin.shopify.com;"
-#define FRAME_LEN strlen(FRAME) - strlen("%s")
+#define FRAME_HEADER "frame-ancestors https://%s https://admin.shopify.com;"
+#define FRAME_HEADER_LEN strlen(FRAME_HEADER) - strlen("%s")
 
-#define EMBEDDEDAPP_URL "https://%s/apps/%s/"
-#define EMBEDDEDAPP_URL_LEN strlen(EMBEDDEDAPP_URL) - strlen("%s") * 2
+#define EMBED_URL "https://%s/apps/%s/"
+#define EMBED_URL_LEN strlen(EMBED_URL) - strlen("%s") * 2
 
 extern inline void crypt_init();
 extern inline bool crypt_maccmp(const char *, const char *, const char *);
@@ -166,8 +166,8 @@ bool shopify_valid(struct MHD_Connection *conn, const char *url,
 static inline int redirect(const char *host, const char *id,
 		struct MHD_Connection *conn, struct MHD_Response **resp)
 {
-	char url[EMBEDDEDAPP_URL_LEN + strlen(host) + strlen(id) + 1];
-	sprintf(url, EMBEDDEDAPP_URL, host, id);
+	char url[EMBED_URL_LEN + strlen(host) + strlen(id) + 1];
+	sprintf(url, EMBED_URL, host, id);
 	*resp = MHD_create_response_from_buffer(0, "", MHD_RESPMEM_PERSISTENT);
 	MHD_add_response_header(*resp, "Location", url);
 	return MHD_queue_response(conn, MHD_HTTP_PERMANENT_REDIRECT, *resp);
@@ -202,8 +202,8 @@ enum MHD_Result shopify_respond(const struct shopify_param params[],
 	struct session *session = bsearch(&(struct session){ shop }, sessions,
 			nsessions, sizeof(struct session), keycmp);
 	const size_t key_len = strlen(key);
-	char frame[FRAME_LEN + shop_len + 1];
-	sprintf(frame, FRAME, shop);
+	char frame[FRAME_HEADER_LEN + shop_len + 1];
+	sprintf(frame, FRAME_HEADER, shop);
 	enum MHD_Result ret;
 	if (!strcmp(url, redir_url)) {
 		const char *code = ((struct shopify_param *)bsearch(
@@ -239,11 +239,11 @@ enum MHD_Result shopify_respond(const struct shopify_param params[],
 		static const size_t nonce_len = 64;
 		char nonce[nonce_len + 1];
 		crypt_getnonce(nonce, nonce_len);
-		const size_t authorize_url_len = AUTHORIZE_URL_LEN
+		const size_t authorize_url_len = AUTH_URL_LEN
 			+ decoded_host_len + key_len + scopes_len
 			+ strlen(app_url) + strlen(redir_url) + nonce_len;
 		char authorize_url[authorize_url_len + 1];
-		sprintf(authorize_url, AUTHORIZE_URL, decoded_host, key, scopes,
+		sprintf(authorize_url, AUTH_URL, decoded_host, key, scopes,
 				app_url, redir_url, nonce);
 		free(scopes);
 		sessions = realloc(sessions, sizeof(struct session)
@@ -254,10 +254,10 @@ enum MHD_Result shopify_respond(const struct shopify_param params[],
 		strcpy(sessions[nsessions].nonce, nonce);
 		sessions[nsessions + 1].shop = NULL;
 		if (embedded) {
-			const size_t page_len = PAGE_LEN + key_len
+			const size_t page_len = REDIR_PAGE_LEN + key_len
 				+ strlen(host) + authorize_url_len;
 			char page[page_len + 1];
-			sprintf(page, PAGE, key, host, authorize_url);
+			sprintf(page, REDIR_PAGE, key, host, authorize_url);
 			*resp = MHD_create_response_from_buffer(page_len,
 					page, MHD_RESPMEM_MUST_COPY);
 			MHD_add_response_header(*resp,
