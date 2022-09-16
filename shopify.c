@@ -107,17 +107,16 @@ bool shopify_valid(struct MHD_Connection *conn, const char *url,
 	if (!nparams)
 		return false;
 	qsort(*params, nparams, sizeof(struct shopify_param), keycmp);
+	struct shopify_param *param = NULL;
 	char *shop = NULL;
-	struct shopify_param *param = bsearch(&(struct shopify_param)
-			{ "shop" }, *params, nparams,
-			sizeof(struct shopify_param), keycmp);
-	if (param)
+	if ((param = bsearch(&(struct shopify_param) { "shop" }, *params,
+					nparams, sizeof(struct shopify_param),
+					keycmp)))
 		shop = param->val;
 	if (!shop || !regex_match(shop)) {
 		clear(*params);
 		return false;
 	}
-	param = NULL;
 	char *query = NULL;
 	for (int i = 0; i < nparams; i++) {
 		const char *key = (*params)[i].key;
@@ -134,9 +133,9 @@ bool shopify_valid(struct MHD_Connection *conn, const char *url,
 		}
 	}
 	char *hmac = NULL;
-	param = bsearch(&(struct shopify_param){ "hmac" }, *params, nparams,
-				sizeof(struct shopify_param), keycmp);
-	if (param)
+	if ((param = bsearch(&(struct shopify_param) { "hmac" }, *params,
+					nparams, sizeof(struct shopify_param),
+					keycmp)))
 		hmac = param->val;
 	if (!hmac || !crypt_maccmp(secret_key, query, hmac)) {
 		clear(*params);
