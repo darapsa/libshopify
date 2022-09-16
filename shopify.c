@@ -146,16 +146,18 @@ bool shopify_valid(struct MHD_Connection *conn, const char *url,
 	free(query);
 	if (strcmp(url, redir_url))
 		return true;
-	char *state = ((struct shopify_param *)bsearch(&(struct shopify_param)
-				{ "state" }, *params, nparams,
-				sizeof(struct shopify_param), keycmp))->val;
 	int nsessions = 0;
 	while (sessions[nsessions].shop)
 		nsessions++;
 	qsort(sessions, nsessions, sizeof(struct session), keycmp);
-	struct session *session = bsearch(&(struct session){ shop }, sessions,
-			nsessions, sizeof(struct session), keycmp);
-	if (strcmp(state, session->nonce)) {
+	if (strcmp(((struct shopify_param *)bsearch(&(struct shopify_param)
+						{ "state" }, *params, nparams,
+						sizeof(struct shopify_param),
+						keycmp))->val,
+				((struct session *)bsearch(&(struct session)
+					{ shop }, sessions, nsessions,
+					sizeof(struct session),
+					keycmp))->nonce)) {
 		clear(*params);
 		return false;
 	}
