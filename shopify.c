@@ -38,8 +38,8 @@
 #define FRAME_HEADER "frame-ancestors https://%s https://admin.shopify.com;"
 #define FRAME_HEADER_LEN strlen(FRAME_HEADER) - strlen("%s")
 
-#define EMBED_URL "https://%s/apps/%s/"
-#define EMBED_URL_LEN strlen(EMBED_URL) - strlen("%s") * 2
+#define EMBEDDED_URL "https://%s/apps/%s/"
+#define EMBEDDED_URL_LEN strlen(EMBEDDED_URL) - strlen("%s") * 2
 
 extern inline void crypt_init();
 extern inline bool crypt_maccmp(const char *, const char *, const char *);
@@ -166,8 +166,8 @@ bool shopify_valid(struct MHD_Connection *conn, const char *url,
 static inline int redirect(const char *host, const char *id,
 		struct MHD_Connection *conn, struct MHD_Response **resp)
 {
-	char url[EMBED_URL_LEN + strlen(host) + strlen(id) + 1];
-	sprintf(url, EMBED_URL, host, id);
+	char url[EMBEDDED_URL_LEN + strlen(host) + strlen(id) + 1];
+	sprintf(url, EMBEDDED_URL, host, id);
 	*resp = MHD_create_response_from_buffer(0, "", MHD_RESPMEM_PERSISTENT);
 	MHD_add_response_header(*resp, "Location", url);
 	return MHD_queue_response(conn, MHD_HTTP_PERMANENT_REDIRECT, *resp);
