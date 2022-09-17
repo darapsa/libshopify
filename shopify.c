@@ -24,12 +24,12 @@
 	"\t\t<script src=\"https://unpkg.com/@shopify/app-bridge@3\">\n"\
 	"\t\t</script>\n"\
 	"\t\t<script>\n"\
-	"\t\t\tvar appBridge = window['app-bridge'];\n"\
-	"\t\t\tvar redirect = appBridge.actions.Redirect;\n"\
-	"\t\t\tredirect.create(appBridge.createApp({\n"\
+	"\t\t\tvar AppBridge = window['app-bridge'];\n"\
+	"\t\t\tvar Redirect = AppBridge.actions.Redirect;\n"\
+	"\t\t\tRedirect.create(AppBridge.createApp({\n"\
 	"\t\t\t\tapiKey: '%s',\n"\
 	"\t\t\t\thost: '%s'\n"\
-	"\t\t\t})).dispatch(redirect.Action.REMOTE, '%s');\n"\
+	"\t\t\t})).dispatch(Redirect.Action.REMOTE, '%s');\n"\
 	"\t\t</script>\n"\
 	"\t</body>\n"\
 	"</html>\n"
