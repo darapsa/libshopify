@@ -35,8 +35,8 @@
 	"</html>\n"
 #define REDIR_PAGE_LEN strlen(REDIR_PAGE) - strlen("%s") * 3
 
-#define FRAME_HEADER "frame-ancestors https://%s https://admin.shopify.com;"
-#define FRAME_HEADER_LEN strlen(FRAME_HEADER) - strlen("%s")
+#define EMBEDDED_HEADER "frame-ancestors https://%s https://admin.shopify.com;"
+#define EMBEDDED_HEADER_LEN strlen(EMBEDDED_HEADER) - strlen("%s")
 
 #define EMBEDDED_URL "https://%s/apps/%s/"
 #define EMBEDDED_URL_LEN strlen(EMBEDDED_URL) - strlen("%s") * 2
@@ -202,8 +202,8 @@ enum MHD_Result shopify_respond(const struct shopify_param params[],
 	struct session *session = bsearch(&(struct session){ shop }, sessions,
 			nsessions, sizeof(struct session), keycmp);
 	const size_t key_len = strlen(key);
-	char header[FRAME_HEADER_LEN + shop_len + 1];
-	sprintf(header, FRAME_HEADER, shop);
+	char header[EMBEDDED_HEADER_LEN + shop_len + 1];
+	sprintf(header, EMBEDDED_HEADER, shop);
 	enum MHD_Result ret;
 	if (!strcmp(url, redir_url)) {
 		const char *code = ((struct shopify_param *)bsearch(
