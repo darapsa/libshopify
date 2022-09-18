@@ -1,12 +1,14 @@
+#include <stdbool.h>
 #include <fcntl.h>
 #include <sys/stat.h>
+#include <microhttpd.h>
 #include "shopify.h"
 #include "crypt.h"
 #include "base64.h"
 #include "regex.h"
 #include "config.h"
-#include "request.h"
 #include "session.h"
+#include "request.h"
 #include "token.h"
 
 #define AUTH_URL \
@@ -50,26 +52,38 @@ extern inline void config_getscopes(const char *, char **);
 extern inline void request_init();
 extern inline void request_token(const char *, const char *, const char *,
 		const char *, char **);
+extern inline void request_graphql(const char *, const struct shopify_session *,
+		char **);
 extern inline void request_cleanup();
-extern inline void token_parse(const char *, struct session *);
+extern inline void token_parse(const char *, struct shopify_session *);
 
-void shopify_init()
-{
-	crypt_init();
-	request_init();
-	sessions = malloc(sizeof(struct session));
-	sessions[0].shop = NULL;
-}
+struct parameter {
+	char *key;
+	char *val;
+};
+
+struct container {
+	const char *key;
+	const char *secret;
+	const char *app_url;
+	const char *redir_url;
+	const char *app_id;
+	const char *scope;
+	const char *index;
+	const struct shopify_api *apis;
+};
+
+static struct shopify_session *sessions;
 
 static enum MHD_Result getparam(void *cls, enum MHD_ValueKind kind,
 		const char *key, const char *val)
 {
 	if (kind == MHD_GET_ARGUMENT_KIND) {
-		struct shopify_param **params = cls;
+		struct parameter **params = cls;
 		int nparams = 0;
 		while ((*params)[nparams].key)
 			nparams++;
-		*params = realloc(*params, sizeof(struct shopify_param)
+		*params = realloc(*params, sizeof(struct parameter)
 				* (nparams + 2));
 		(*params)[nparams].key = malloc(strlen(key) + 1);
 		strcpy((*params)[nparams].key, key);
@@ -80,7 +94,7 @@ static enum MHD_Result getparam(void *cls, enum MHD_ValueKind kind,
 	return MHD_YES;
 }
 
-static inline void clear(const struct shopify_param params[])
+static inline void clear(const struct parameter params[])
 {
 	int i = 0;
 	while (params[i].key) {
@@ -94,33 +108,49 @@ static int keycmp(const void *struct1, const void *struct2)
 	return strcmp(*(char **)struct1, *(char **)struct2);
 }
 
-bool shopify_valid(struct MHD_Connection *conn, const char *url,
-		const char *redir_url, const char *secret_key,
-		struct shopify_param *params[])
+static inline int redirect(const char *host, const char *id,
+		struct MHD_Connection *con, struct MHD_Response **res)
 {
-	(*params)[0].key = NULL;
-	MHD_get_connection_values(conn, MHD_GET_ARGUMENT_KIND, getparam,
-			params);
+	char url[EMBEDDED_URL_LEN + strlen(host) + strlen(id) + 1];
+	sprintf(url, EMBEDDED_URL, host, id);
+	*res = MHD_create_response_from_buffer(0, "", MHD_RESPMEM_PERSISTENT);
+	MHD_add_response_header(*res, "Location", url);
+	return MHD_queue_response(con, MHD_HTTP_PERMANENT_REDIRECT, *res);
+}
+
+static enum MHD_Result handle_request(void *cls, struct MHD_Connection *con,
+		const char *url, const char *method, const char *version,
+		const char *upload_data, size_t *upload_data_size,
+		void **con_cls)
+{
+	struct parameter *params = *con_cls;
+	if (!params) {
+		params = malloc(sizeof(struct parameter));
+		params[0].key = NULL;
+		*con_cls = params;
+		return MHD_YES;
+	}
+	MHD_get_connection_values(con, MHD_GET_ARGUMENT_KIND, getparam,
+			&params);
 	int nparams = 0;
-	while ((*params)[nparams].key)
+	while (params[nparams].key)
 		nparams++;
 	if (!nparams)
-		return false;
-	qsort(*params, nparams, sizeof(struct shopify_param), keycmp);
-	struct shopify_param *param = NULL;
+		return MHD_NO;
+	qsort(params, nparams, sizeof(struct parameter), keycmp);
+	struct parameter *param = NULL;
 	char *shop = NULL;
-	if ((param = bsearch(&(struct shopify_param) { "shop" }, *params,
-					nparams, sizeof(struct shopify_param),
-					keycmp)))
+	if ((param = bsearch(&(struct parameter) { "shop" }, params, nparams,
+					sizeof(struct parameter), keycmp)))
 		shop = param->val;
 	if (!shop || !regex_match(shop)) {
-		clear(*params);
-		return false;
+		clear(params);
+		return MHD_NO;
 	}
 	char *query = NULL;
 	for (int i = 0; i < nparams; i++) {
-		const char *key = (*params)[i].key;
-		const char *val = (*params)[i].val;
+		const char *key = params[i].key;
+		const char *val = params[i].val;
 		if (strcmp(key, "hmac")) {
 			size_t query_len = query ? strlen(query) : 0;
 			bool ampersand_len = i != nparams - 1;
@@ -133,112 +163,122 @@ bool shopify_valid(struct MHD_Connection *conn, const char *url,
 		}
 	}
 	char *hmac = NULL;
-	if ((param = bsearch(&(struct shopify_param) { "hmac" }, *params,
-					nparams, sizeof(struct shopify_param),
-					keycmp)))
+	if ((param = bsearch(&(struct parameter) { "hmac" }, params, nparams,
+					sizeof(struct parameter), keycmp)))
 		hmac = param->val;
+	struct container *container = cls;
+	const char *secret_key = container->secret;
 	if (!hmac || !crypt_maccmp(secret_key, query, hmac)) {
-		clear(*params);
+		clear(params);
 		free(query);
-		return false;
+		return MHD_NO;
 	}
 	free(query);
-	if (strcmp(url, redir_url))
-		return true;
 	int nsessions = 0;
 	while (sessions[nsessions].shop)
 		nsessions++;
-	qsort(sessions, nsessions, sizeof(struct session), keycmp);
-	if (strcmp(((struct shopify_param *)bsearch(&(struct shopify_param)
-						{ "state" }, *params, nparams,
-						sizeof(struct shopify_param),
+	qsort(sessions, nsessions, sizeof(struct shopify_session), keycmp);
+	const char *redir_url = container->redir_url;
+	if (!strcmp(url, redir_url)
+			&& strcmp(((struct parameter *)bsearch(
+						&(struct parameter){ "state" },
+						params, nparams,
+						sizeof(struct parameter),
 						keycmp))->val,
-				((struct session *)bsearch(&(struct session)
-					{ shop }, sessions, nsessions,
-					sizeof(struct session),
+				((struct shopify_session *)bsearch(
+					&(struct shopify_session){ shop },
+					sessions, nsessions,
+					sizeof(struct shopify_session),
 					keycmp))->nonce)) {
-		clear(*params);
-		return false;
+		clear(params);
+		return MHD_NO;
 	}
-	return true;
-}
-
-static inline int redirect(const char *host, const char *id,
-		struct MHD_Connection *conn, struct MHD_Response **resp)
-{
-	char url[EMBEDDED_URL_LEN + strlen(host) + strlen(id) + 1];
-	sprintf(url, EMBEDDED_URL, host, id);
-	*resp = MHD_create_response_from_buffer(0, "", MHD_RESPMEM_PERSISTENT);
-	MHD_add_response_header(*resp, "Location", url);
-	return MHD_queue_response(conn, MHD_HTTP_PERMANENT_REDIRECT, *resp);
-}
-
-enum MHD_Result shopify_respond(const struct shopify_param params[],
-		const char *url, const char *redir_url, const char *app_url,
-		const char *app_id, const char *key, const char *secret_key,
-		const char *toml_path, const char *html_path,
-		struct MHD_Connection *conn, struct MHD_Response **resp)
-{
-	int nparams = 0;
-	while (params[nparams].key)
-		nparams++;
-	char *shop = ((struct shopify_param *)bsearch(&(struct shopify_param)
-				{ "shop" }, params, nparams,
-				sizeof(struct shopify_param), keycmp))->val;
 	const size_t shop_len = strlen(shop);
-	char *host = ((struct shopify_param *)bsearch(&(struct shopify_param)
-				{ "host" }, params, nparams,
-				sizeof(struct shopify_param), keycmp))->val;
-	struct shopify_param *param = bsearch(&(struct shopify_param)
-			{ "embedded" }, params, nparams,
-			sizeof(struct shopify_param), keycmp);
+	char *host = ((struct parameter *)bsearch(&(struct parameter){ "host" },
+				params, nparams, sizeof(struct parameter),
+				keycmp))->val;
+	param = bsearch(&(struct parameter){ "embedded" }, params, nparams,
+			sizeof(struct parameter), keycmp);
 	bool embedded = param && !strcmp(param->val, "1");
 	char *dec_host;
 	base64_decode(host, &dec_host);
-	int nsessions = 0;
-	while (sessions[nsessions].shop)
-		nsessions++;
-	qsort(sessions, nsessions, sizeof(struct session), keycmp);
-	struct session *session = bsearch(&(struct session){ shop }, sessions,
-			nsessions, sizeof(struct session), keycmp);
+	struct shopify_session *session = bsearch(&(struct shopify_session)
+			{ shop }, sessions, nsessions,
+			sizeof(struct shopify_session), keycmp);
+	const char *key = container->key;
 	const size_t key_len = strlen(key);
+	const char *app_id = container->app_id;
 	char header[EMBEDDED_HEADER_LEN + shop_len + 1];
 	sprintf(header, EMBEDDED_HEADER, shop);
-	enum MHD_Result ret;
+	struct MHD_Response *res;
+	enum MHD_Result ret = MHD_NO;
 	if (!strcmp(url, redir_url)) {
-		const char *code = ((struct shopify_param *)bsearch(
-					&(struct shopify_param){ "code" },
-					params, nparams,
-					sizeof(struct shopify_param),
+		const char *code = ((struct parameter *)bsearch(
+					&(struct parameter){ "code" }, params,
+					nparams, sizeof(struct parameter),
 					keycmp))->val;
 		char *token = NULL;
 		request_token(dec_host, key, secret_key, code, &token);
 		token_parse(token, session);
 		free(token);
-		ret = redirect(dec_host, app_id, conn, resp);
+		ret = redirect(dec_host, app_id, con, &res);
 	} else if (session && session->token) {
 		if (embedded) {
-			int fd = open(html_path, O_RDONLY);
-			struct stat sb;
-			fstat(fd, &sb);
-			char index[sb.st_size + 1];
-			read(fd, index, sb.st_size);
-			close(fd);
-			*resp = MHD_create_response_from_buffer(sb.st_size,
-					index, MHD_RESPMEM_MUST_COPY);
-			MHD_add_response_header(*resp,
-					"Content-Security-Policy", header);
-			ret = MHD_queue_response(conn, MHD_HTTP_OK, *resp);
+			if (!strcmp(url, "/") && !strcmp(method, "GET")) {
+				int fd = open(container->index, O_RDONLY);
+				struct stat sb;
+				fstat(fd, &sb);
+				char index[sb.st_size + 1];
+				read(fd, index, sb.st_size);
+				close(fd);
+				res = MHD_create_response_from_buffer(
+						sb.st_size, index,
+						MHD_RESPMEM_MUST_COPY);
+				MHD_add_response_header(res,
+						"Content-Security-Policy",
+						header);
+				ret = MHD_queue_response(con, MHD_HTTP_OK, res);
+			} else {
+				int i = 0;
+				const struct shopify_api *api;
+				while ((api = &(container->apis[i++])))
+					if (!strcmp(url, api->url)
+							&& !strcmp(method,
+								api->method)) {
+						char *json = NULL;
+						api->cb(api->arg, session,
+								json);
+						res = MHD_create_response_from_buffer(
+								strlen(json),
+								json,
+								MHD_RESPMEM_MUST_FREE);
+						MHD_add_response_header(res,
+								"Content-"\
+								"Security-"\
+								"Policy",
+								header);
+						MHD_add_response_header(res,
+								"Content-"\
+								"Type",
+								"application/"\
+								"json");
+						ret = MHD_queue_response(con,
+								MHD_HTTP_OK,
+								res);
+						break;
+					}
+			}
 		} else
-			ret = redirect(dec_host, app_id, conn, resp);
+			ret = redirect(dec_host, app_id, con, &res);
 	} else {
 		const size_t dec_host_len = strlen(dec_host);
 		char *scopes = NULL;
-		config_getscopes(toml_path, &scopes);
+		config_getscopes(container->scope, &scopes);
 		const size_t scopes_len = strlen(scopes);
 		static const size_t nonce_len = 64;
 		char nonce[nonce_len + 1];
 		crypt_getnonce(nonce, nonce_len);
+		const char *app_url = container->app_url;
 		const size_t auth_url_len = AUTH_URL_LEN + dec_host_len
 			+ key_len + scopes_len + strlen(app_url)
 			+ strlen(redir_url) + nonce_len;
@@ -246,7 +286,7 @@ enum MHD_Result shopify_respond(const struct shopify_param params[],
 		sprintf(auth_url, AUTH_URL, dec_host, key, scopes, app_url,
 				redir_url, nonce);
 		free(scopes);
-		sessions = realloc(sessions, sizeof(struct session)
+		sessions = realloc(sessions, sizeof(struct shopify_session)
 				* (nsessions + 2));
 		sessions[nsessions].shop = malloc(shop_len + 1);
 		strcpy(sessions[nsessions].shop, shop);
@@ -258,17 +298,17 @@ enum MHD_Result shopify_respond(const struct shopify_param params[],
 				+ strlen(host) + auth_url_len;
 			char page[page_len + 1];
 			sprintf(page, REDIR_PAGE, key, host, auth_url);
-			*resp = MHD_create_response_from_buffer(page_len,
+			res = MHD_create_response_from_buffer(page_len,
 					page, MHD_RESPMEM_MUST_COPY);
-			MHD_add_response_header(*resp,
-					"Content-Security-Policy", header);
-			ret = MHD_queue_response(conn, MHD_HTTP_OK, *resp);
+			MHD_add_response_header(res, "Content-Security-Policy",
+					header);
+			ret = MHD_queue_response(con, MHD_HTTP_OK, res);
 		} else {
-			*resp = MHD_create_response_from_buffer(0, "",
+			res = MHD_create_response_from_buffer(0, "",
 					MHD_RESPMEM_PERSISTENT);
-			MHD_add_response_header(*resp, "Location", auth_url);
-			ret = MHD_queue_response(conn,
-					MHD_HTTP_TEMPORARY_REDIRECT, *resp);
+			MHD_add_response_header(res, "Location", auth_url);
+			ret = MHD_queue_response(con,
+					MHD_HTTP_TEMPORARY_REDIRECT, res);
 		}
 	}
 	free(dec_host);
@@ -276,9 +316,29 @@ enum MHD_Result shopify_respond(const struct shopify_param params[],
 	return ret;
 }
 
-void shopify_cleanup()
+void shopify_app(const char *api_key, const char *api_secret_key,
+		const char *app_url, const char *redir_url, const char *app_id,
+		const char *scope, const char *index,
+		const struct shopify_api apis[])
 {
-	request_cleanup();
+	crypt_init();
+	request_init();
+	sessions = malloc(sizeof(struct shopify_session));
+	sessions[0].shop = NULL;
+	struct MHD_Daemon *daemon
+		= MHD_start_daemon(MHD_USE_INTERNAL_POLLING_THREAD, 3000, NULL,
+				NULL, &handle_request, &(struct container){
+				api_key,
+				api_secret_key,
+				app_url,
+				redir_url,
+				app_id,
+				scope,
+				index,
+				apis
+			}, MHD_OPTION_END);
+	getchar();
+	MHD_stop_daemon(daemon);
 	int i = 0;
 	while (sessions[i].shop) {
 		if (sessions[i].scope)
@@ -289,4 +349,11 @@ void shopify_cleanup()
 		free(sessions[i++].shop);
 	}
 	free(sessions);
+	request_cleanup();
+}
+
+void shopify_graphql(const char *query, const struct shopify_session *session,
+		char **json)
+{
+	request_graphql(query, session, json);
 }

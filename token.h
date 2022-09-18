@@ -1,6 +1,6 @@
 #include <json.h>
 
-static inline void token_parse(const char *tok, struct session *session)
+static inline void token_parse(const char *tok, struct shopify_session *session)
 {
 	json_tokener *tokener = json_tokener_new();
 	json_object *obj = json_tokener_parse_ex(tokener, tok, strlen(tok));
