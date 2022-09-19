@@ -75,21 +75,28 @@ struct container {
 
 static struct shopify_session *sessions;
 
-static enum MHD_Result getparam(void *cls, enum MHD_ValueKind kind,
+static enum MHD_Result iterate(void *cls, enum MHD_ValueKind kind,
 		const char *key, const char *val)
 {
-	if (kind == MHD_GET_ARGUMENT_KIND) {
-		struct parameter **params = cls;
-		int nparams = 0;
-		while ((*params)[nparams].key)
-			nparams++;
-		*params = realloc(*params, sizeof(struct parameter)
-				* (nparams + 2));
-		(*params)[nparams].key = malloc(strlen(key) + 1);
-		strcpy((*params)[nparams].key, key);
-		(*params)[nparams].val = malloc(strlen(val) + 1);
-		strcpy((*params)[nparams].val, val);
-		(*params)[nparams + 1].key = NULL;
+	switch (kind) {
+		case MHD_GET_ARGUMENT_KIND:
+			;
+			struct parameter **params = cls;
+			int nparams = 0;
+			while ((*params)[nparams].key)
+				nparams++;
+			*params = realloc(*params, sizeof(struct parameter)
+					* (nparams + 2));
+			(*params)[nparams].key = malloc(strlen(key) + 1);
+			strcpy((*params)[nparams].key, key);
+			(*params)[nparams].val = malloc(strlen(val) + 1);
+			strcpy((*params)[nparams].val, val);
+			(*params)[nparams + 1].key = NULL;
+			break;
+		case MHD_HEADER_KIND:
+			printf("%s: %s\n", key, val);
+		default:
+			break;
 	}
 	return MHD_YES;
 }
@@ -130,8 +137,8 @@ static enum MHD_Result handle_request(void *cls, struct MHD_Connection *con,
 		*con_cls = params;
 		return MHD_YES;
 	}
-	MHD_get_connection_values(con, MHD_GET_ARGUMENT_KIND, getparam,
-			&params);
+	MHD_get_connection_values(con, MHD_GET_ARGUMENT_KIND, iterate, &params);
+	MHD_get_connection_values(con, MHD_HEADER_KIND, iterate, NULL);
 	int nparams = 0;
 	while (params[nparams].key)
 		nparams++;
@@ -235,10 +242,10 @@ static enum MHD_Result handle_request(void *cls, struct MHD_Connection *con,
 				read(fd, html, sb.st_size);
 				close(fd);
 				const size_t index_len = sb.st_size
-					- strlen("%s") * 4 + app_url_len * 2
-					+ key_len + host_len;
+					- strlen("%s") * 4 + key_len + host_len
+					+ app_url_len * 2;
 				char index[index_len + 1];
-				sprintf(index, html, app_url, key, host,
+				sprintf(index, html, key, host, app_url,
 						app_url);
 				res = MHD_create_response_from_buffer(index_len,
 						index, MHD_RESPMEM_MUST_COPY);
