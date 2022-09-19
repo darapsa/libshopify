@@ -197,6 +197,7 @@ static enum MHD_Result handle_request(void *cls, struct MHD_Connection *con,
 	char *host = ((struct parameter *)bsearch(&(struct parameter){ "host" },
 				params, nparams, sizeof(struct parameter),
 				keycmp))->val;
+	const size_t host_len = strlen(host);
 	param = bsearch(&(struct parameter){ "embedded" }, params, nparams,
 			sizeof(struct parameter), keycmp);
 	bool embedded = param && !strcmp(param->val, "1");
@@ -207,6 +208,8 @@ static enum MHD_Result handle_request(void *cls, struct MHD_Connection *con,
 			sizeof(struct shopify_session), keycmp);
 	const char *key = container->key;
 	const size_t key_len = strlen(key);
+	const char *app_url = container->app_url;
+	const size_t app_url_len = strlen(app_url);
 	const char *app_id = container->app_id;
 	char header[EMBEDDED_HEADER_LEN + shop_len + 1];
 	sprintf(header, EMBEDDED_HEADER, shop);
@@ -228,12 +231,17 @@ static enum MHD_Result handle_request(void *cls, struct MHD_Connection *con,
 				int fd = open(container->index, O_RDONLY);
 				struct stat sb;
 				fstat(fd, &sb);
-				char index[sb.st_size + 1];
-				read(fd, index, sb.st_size);
+				char html[sb.st_size + 1];
+				read(fd, html, sb.st_size);
 				close(fd);
-				res = MHD_create_response_from_buffer(
-						sb.st_size, index,
-						MHD_RESPMEM_MUST_COPY);
+				const size_t index_len = sb.st_size
+					- strlen("%s") * 4 + app_url_len * 2
+					+ key_len + host_len;
+				char index[index_len + 1];
+				sprintf(index, html, app_url, key, host,
+						app_url);
+				res = MHD_create_response_from_buffer(index_len,
+						index, MHD_RESPMEM_MUST_COPY);
 				MHD_add_response_header(res,
 						"Content-Security-Policy",
 						header);
@@ -278,9 +286,8 @@ static enum MHD_Result handle_request(void *cls, struct MHD_Connection *con,
 		static const size_t nonce_len = 64;
 		char nonce[nonce_len + 1];
 		crypt_getnonce(nonce, nonce_len);
-		const char *app_url = container->app_url;
 		const size_t auth_url_len = AUTH_URL_LEN + dec_host_len
-			+ key_len + scopes_len + strlen(app_url)
+			+ key_len + scopes_len + app_url_len
 			+ strlen(redir_url) + nonce_len;
 		char auth_url[auth_url_len + 1];
 		sprintf(auth_url, AUTH_URL, dec_host, key, scopes, app_url,
@@ -295,7 +302,7 @@ static enum MHD_Result handle_request(void *cls, struct MHD_Connection *con,
 		sessions[nsessions + 1].shop = NULL;
 		if (embedded) {
 			const size_t page_len = REDIR_PAGE_LEN + key_len
-				+ strlen(host) + auth_url_len;
+				+ host_len + auth_url_len;
 			char page[page_len + 1];
 			sprintf(page, REDIR_PAGE, key, host, auth_url);
 			res = MHD_create_response_from_buffer(page_len,
