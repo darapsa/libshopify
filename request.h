@@ -26,7 +26,7 @@ static size_t append(char *data, size_t size, size_t nmemb, char **json)
 	return realsize;
 }
 
-static inline void request_token(const char *host, const char *key,
+static inline void request_gettoken(const char *host, const char *key,
 		const char *secret_key, const char *code, char **json)
 {
 	CURL *curl = curl_easy_init();
@@ -55,8 +55,8 @@ static inline void request_graphql(const char *query,
 	curl_easy_setopt(curl, CURLOPT_URL, url);
 	struct curl_slist *list = NULL;
 	curl_slist_append(list, "Content-Type: application/json");
-	char header[TOKEN_HEADER_LEN + strlen(session->token) + 1];
-	sprintf(header, TOKEN_HEADER, session->token);
+	char header[TOKEN_HEADER_LEN + strlen(session->access_token) + 1];
+	sprintf(header, TOKEN_HEADER, session->access_token);
 	curl_slist_append(list, header);
 	curl_easy_setopt(curl, CURLOPT_HTTPHEADER, list);
 	curl_easy_setopt(curl, CURLOPT_POSTFIELDS, query);

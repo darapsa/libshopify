@@ -3,7 +3,7 @@ AM_INIT_AUTOMAKE([-Wall -Werror foreign])
 AC_PROG_CC
 AM_PROG_AR
 LT_INIT
-PKG_CHECK_MODULES([DEPS], [libmicrohttpd libgcrypt gnutls libpcre2-8 libcurl json-c])
+PKG_CHECK_MODULES([DEPS], [libmicrohttpd libgcrypt gnutls libpcre2-8 libcurl json-c libjwt])
 AC_CHECK_HEADERS([fcntl.h])
 AC_CHECK_HEADER_STDBOOL
 AC_C_INLINE

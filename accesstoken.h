@@ -1,6 +1,7 @@
 #include <json.h>
 
-static inline void token_parse(const char *tok, struct shopify_session *session)
+static inline void accesstoken_parse(const char *tok,
+		struct shopify_session *session)
 {
 	json_tokener *tokener = json_tokener_new();
 	json_object *obj = json_tokener_parse_ex(tokener, tok, strlen(tok));
@@ -11,8 +12,8 @@ static inline void token_parse(const char *tok, struct shopify_session *session)
 					"access_token")) {
 			const char *val = json_object_get_string(
 					json_object_iter_peek_value(&iter));
-			session->token = malloc(strlen(val) + 1);
-			strcpy(session->token, val);
+			session->access_token = malloc(strlen(val) + 1);
+			strcpy(session->access_token, val);
 		} else if (!strcmp(json_object_iter_peek_name(&iter),
 					"scope")) {
 			const char *val = json_object_get_string(
