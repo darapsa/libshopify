@@ -312,6 +312,7 @@ static enum MHD_Result handle_request(void *cls, struct MHD_Connection *con,
 		sessions[nsessions].nonce = malloc(nonce_len + 1);
 		strcpy(sessions[nsessions].nonce, nonce);
 		sessions[nsessions + 1].shop = NULL;
+		container->sessions = sessions;
 		if (embedded) {
 			const size_t page_len = REDIR_PAGE_LEN + key_len
 				+ host_len + auth_url_len;
