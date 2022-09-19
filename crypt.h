@@ -5,7 +5,7 @@ static inline void crypt_init()
 	gcry_check_version("1.9.4");
 }
 
-static inline bool crypt_maccmp(const char *key, const char *query,
+static inline bool crypt_macmatch(const char *key, const char *query,
 		const char *hmac)
 {
 	gcry_mac_hd_t hd;

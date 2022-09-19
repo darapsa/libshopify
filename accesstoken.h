@@ -18,8 +18,8 @@ static inline void accesstoken_parse(const char *tok,
 					"scope")) {
 			const char *val = json_object_get_string(
 					json_object_iter_peek_value(&iter));
-			session->scope = malloc(strlen(val) + 1);
-			strcpy(session->scope, val);
+			session->scopes = malloc(strlen(val) + 1);
+			strcpy(session->scopes, val);
 		}
 		json_object_iter_next(&iter);
 	}

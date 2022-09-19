@@ -1,6 +1,6 @@
 #include <gnutls/gnutls.h>
 
-static inline void base64_decode(const char *host, char **dec_host)
+static inline void base64_getdecoded(const char *host, char **dec_host)
 {
 	gnutls_datum_t result;
 	gnutls_base64_decode2(&(gnutls_datum_t){

@@ -45,10 +45,10 @@
 #define EMBEDDED_URL_LEN strlen(EMBEDDED_URL) - strlen("%s") * 2
 
 extern inline void crypt_init();
-extern inline bool crypt_maccmp(const char *, const char *, const char *);
+extern inline bool crypt_macmatch(const char *, const char *, const char *);
 extern inline void crypt_getnonce(char [], const size_t);
 extern inline bool regex_match(const char *);
-extern inline void base64_decode(const char *, char **);
+extern inline void base64_getdecoded(const char *, char **);
 extern inline void config_getscopes(const char *, char **);
 extern inline void request_init();
 extern inline void request_gettoken(const char *, const char *, const char *,
@@ -70,7 +70,7 @@ struct container {
 	const char *app_url;
 	const char *redir_url;
 	const char *app_id;
-	const char *scope;
+	const char *scopes;
 	const char *index;
 	const struct shopify_api *apis;
 	struct shopify_session *sessions;
@@ -204,7 +204,7 @@ static enum MHD_Result handle_request(void *cls, struct MHD_Connection *con,
 						sizeof(struct parameter),
 						keycmp)))
 			hmac = param->val;
-		if (!hmac || !crypt_maccmp(secret_key, query, hmac)) {
+		if (!hmac || !crypt_macmatch(secret_key, query, hmac)) {
 			free(query);
 			clear(params);
 			free(params);
@@ -260,7 +260,6 @@ static enum MHD_Result handle_request(void *cls, struct MHD_Connection *con,
 		shop_len = sizeof(char) * (next - pair);
 		shop = malloc(shop_len + 1);
 		strlcpy(shop, pair, shop_len + 1);
-		printf("Shop: %s\n", shop);
 		free(tofree);
 		if (!regex_match(shop) || !sessiontoken_isvalid(session_token,
 					secret_key)) {
@@ -281,7 +280,7 @@ static enum MHD_Result handle_request(void *cls, struct MHD_Connection *con,
 		param = bsearch(&(struct parameter){ "embedded" }, params,
 				nparams, sizeof(struct parameter), keycmp);
 		embedded = param && !strcmp(param->val, "1");
-		base64_decode(host, &dec_host);
+		base64_getdecoded(host, &dec_host);
 	}
 	const char *key = container->key;
 	const size_t key_len = strlen(key);
@@ -345,7 +344,7 @@ static enum MHD_Result handle_request(void *cls, struct MHD_Connection *con,
 	} else {
 		const size_t dec_host_len = strlen(dec_host);
 		char *scopes = NULL;
-		config_getscopes(container->scope, &scopes);
+		config_getscopes(container->scopes, &scopes);
 		const size_t scopes_len = strlen(scopes);
 		static const size_t nonce_len = 64;
 		char nonce[nonce_len + 1];
@@ -391,7 +390,7 @@ static enum MHD_Result handle_request(void *cls, struct MHD_Connection *con,
 
 void shopify_app(const char *api_key, const char *api_secret_key,
 		const char *app_url, const char *redir_url, const char *app_id,
-		const char *scope, const char *index,
+		const char *scopes, const char *index,
 		const struct shopify_api apis[])
 {
 	crypt_init();
@@ -407,7 +406,7 @@ void shopify_app(const char *api_key, const char *api_secret_key,
 				app_url,
 				redir_url,
 				app_id,
-				scope,
+				scopes,
 				index,
 				apis,
 				sessions
@@ -416,8 +415,8 @@ void shopify_app(const char *api_key, const char *api_secret_key,
 	MHD_stop_daemon(daemon);
 	int i = 0;
 	while (sessions[i].shop) {
-		if (sessions[i].scope)
-			free(sessions[i].scope);
+		if (sessions[i].scopes)
+			free(sessions[i].scopes);
 		if (sessions[i].access_token)
 			free(sessions[i].access_token);
 		free(sessions[i].nonce);
