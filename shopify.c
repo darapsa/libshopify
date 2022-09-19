@@ -256,8 +256,7 @@ static enum MHD_Result handle_request(void *cls, struct MHD_Connection *con,
 			return MHD_NO;
 		}
 		pair = &pair[key_len];
-		char *next = strchrnul(pair, '&');
-		shop_len = sizeof(char) * (next - pair);
+		shop_len = (strchrnul(pair, '&') - pair) * sizeof(char);
 		shop = malloc(shop_len + 1);
 		strlcpy(shop, pair, shop_len + 1);
 		free(tofree);
