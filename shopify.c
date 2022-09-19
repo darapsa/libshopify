@@ -57,16 +57,16 @@ extern inline void request_graphql(const char *, const struct shopify_session *,
 		char **);
 extern inline void request_cleanup();
 extern inline void accesstoken_parse(const char *, struct shopify_session *);
-extern inline bool sessiontoken_isvalid(const char *, const char *);
-
+extern inline bool sessiontoken_isvalid(const char *token, const char *key,
+		const char *secret_key, const char *shop);
 struct parameter {
 	char *key;
 	char *val;
 };
 
 struct container {
-	const char *key;
-	const char *secret;
+	const char *api_key;
+	const char *api_secret_key;
 	const char *app_url;
 	const char *redir_url;
 	const char *app_id;
@@ -154,7 +154,9 @@ static enum MHD_Result handle_request(void *cls, struct MHD_Connection *con,
 	}
 	MHD_get_connection_values(con, MHD_GET_ARGUMENT_KIND, iterate, &params);
 	struct container *container = cls;
-	const char *secret_key = container->secret;
+	const char *api_key = container->api_key;
+	const size_t api_key_len = strlen(api_key);
+	const char *api_secret_key = container->api_secret_key;
 	const char *app_url = container->app_url;
 	const size_t app_url_len = strlen(app_url);
 	const char *redir_url = container->redir_url;
@@ -172,7 +174,7 @@ static enum MHD_Result handle_request(void *cls, struct MHD_Connection *con,
 		nparams++;
 	if (nparams) {
 		qsort(params, nparams, sizeof(struct parameter), keycmp);
-		if ((param = bsearch(&(struct parameter) { "shop" }, params,
+		if ((param = bsearch(&(struct parameter){ "shop" }, params,
 						nparams,
 						sizeof(struct parameter),
 						keycmp)))
@@ -199,12 +201,12 @@ static enum MHD_Result handle_request(void *cls, struct MHD_Connection *con,
 			}
 		}
 		char *hmac = NULL;
-		if ((param = bsearch(&(struct parameter) { "hmac" }, params,
+		if ((param = bsearch(&(struct parameter){ "hmac" }, params,
 						nparams,
 						sizeof(struct parameter),
 						keycmp)))
 			hmac = param->val;
-		if (!hmac || !crypt_macmatch(secret_key, query, hmac)) {
+		if (!hmac || !crypt_macmatch(api_secret_key, query, hmac)) {
 			free(query);
 			clear(params);
 			free(params);
@@ -261,7 +263,7 @@ static enum MHD_Result handle_request(void *cls, struct MHD_Connection *con,
 		strlcpy(shop, pair, shop_len + 1);
 		free(tofree);
 		if (!regex_match(shop) || !sessiontoken_isvalid(session_token,
-					secret_key)) {
+					api_key, api_secret_key, shop)) {
 			free(session_token);
 			free(shop);
 			return MHD_NO;
@@ -281,8 +283,6 @@ static enum MHD_Result handle_request(void *cls, struct MHD_Connection *con,
 		embedded = param && !strcmp(param->val, "1");
 		base64_getdecoded(host, &dec_host);
 	}
-	const char *key = container->key;
-	const size_t key_len = strlen(key);
 	const char *app_id = container->app_id;
 	char header[EMBEDDED_HEADER_LEN + shop_len + 1];
 	sprintf(header, EMBEDDED_HEADER, shop);
@@ -297,7 +297,7 @@ static enum MHD_Result handle_request(void *cls, struct MHD_Connection *con,
 					nparams, sizeof(struct parameter),
 					keycmp))->val;
 		char *access_token = NULL;
-		request_gettoken(dec_host, key, secret_key, code,
+		request_gettoken(dec_host, api_key, api_secret_key, code,
 				&access_token);
 		accesstoken_parse(access_token, session);
 		free(access_token);
@@ -330,9 +330,9 @@ static enum MHD_Result handle_request(void *cls, struct MHD_Connection *con,
 			read(fd, html, sb.st_size);
 			close(fd);
 			const size_t index_len = sb.st_size - strlen("%s") * 4
-				+ key_len + host_len + app_url_len * 2;
+				+ api_key_len + host_len + app_url_len * 2;
 			char index[index_len + 1];
-			sprintf(index, html, key, host, app_url, app_url);
+			sprintf(index, html, api_key, host, app_url, app_url);
 			res = MHD_create_response_from_buffer(index_len, index,
 					MHD_RESPMEM_MUST_COPY);
 			MHD_add_response_header(res, "Content-Security-Policy",
@@ -349,10 +349,10 @@ static enum MHD_Result handle_request(void *cls, struct MHD_Connection *con,
 		char nonce[nonce_len + 1];
 		crypt_getnonce(nonce, nonce_len);
 		const size_t auth_url_len = AUTH_URL_LEN + dec_host_len
-			+ key_len + scopes_len + app_url_len
+			+ api_key_len + scopes_len + app_url_len
 			+ strlen(redir_url) + nonce_len;
 		char auth_url[auth_url_len + 1];
-		sprintf(auth_url, AUTH_URL, dec_host, key, scopes, app_url,
+		sprintf(auth_url, AUTH_URL, dec_host, api_key, scopes, app_url,
 				redir_url, nonce);
 		free(scopes);
 		sessions = realloc(sessions, sizeof(struct shopify_session)
@@ -364,10 +364,10 @@ static enum MHD_Result handle_request(void *cls, struct MHD_Connection *con,
 		sessions[nsessions + 1].shop = NULL;
 		container->sessions = sessions;
 		if (embedded) {
-			const size_t page_len = REDIR_PAGE_LEN + key_len
+			const size_t page_len = REDIR_PAGE_LEN + api_key_len
 				+ host_len + auth_url_len;
 			char page[page_len + 1];
-			sprintf(page, REDIR_PAGE, key, host, auth_url);
+			sprintf(page, REDIR_PAGE, api_key, host, auth_url);
 			res = MHD_create_response_from_buffer(page_len,
 					page, MHD_RESPMEM_MUST_COPY);
 			MHD_add_response_header(res, "Content-Security-Policy",
