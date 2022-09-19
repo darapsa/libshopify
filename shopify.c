@@ -94,6 +94,7 @@ static enum MHD_Result iterate(void *cls, enum MHD_ValueKind kind,
 			break;
 		case MHD_HEADER_KIND:
 			printf("%s: %s\n", key, val);
+			break;
 		default:
 			break;
 	}
