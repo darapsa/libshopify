@@ -142,8 +142,10 @@ static enum MHD_Result handle_request(void *cls, struct MHD_Connection *con,
 	int nparams = 0;
 	while (params[nparams].key)
 		nparams++;
-	if (!nparams)
+	if (!nparams) {
+		free(params);
 		return MHD_NO;
+	}
 	qsort(params, nparams, sizeof(struct parameter), keycmp);
 	struct parameter *param = NULL;
 	char *shop = NULL;
@@ -152,6 +154,7 @@ static enum MHD_Result handle_request(void *cls, struct MHD_Connection *con,
 		shop = param->val;
 	if (!shop || !regex_match(shop)) {
 		clear(params);
+		free(params);
 		return MHD_NO;
 	}
 	char *query = NULL;
@@ -176,8 +179,9 @@ static enum MHD_Result handle_request(void *cls, struct MHD_Connection *con,
 	struct container *container = cls;
 	const char *secret_key = container->secret;
 	if (!hmac || !crypt_maccmp(secret_key, query, hmac)) {
-		clear(params);
 		free(query);
+		clear(params);
+		free(params);
 		return MHD_NO;
 	}
 	free(query);
@@ -198,6 +202,7 @@ static enum MHD_Result handle_request(void *cls, struct MHD_Connection *con,
 					sizeof(struct shopify_session),
 					keycmp))->nonce)) {
 		clear(params);
+		free(params);
 		return MHD_NO;
 	}
 	const size_t shop_len = strlen(shop);
@@ -327,6 +332,7 @@ static enum MHD_Result handle_request(void *cls, struct MHD_Connection *con,
 	}
 	free(dec_host);
 	clear(params);
+	free(params);
 	return ret;
 }
 
