@@ -71,9 +71,8 @@ struct container {
 	const char *scope;
 	const char *index;
 	const struct shopify_api *apis;
+	struct shopify_session *sessions;
 };
-
-static struct shopify_session *sessions;
 
 static enum MHD_Result iterate(void *cls, enum MHD_ValueKind kind,
 		const char *key, const char *val)
@@ -185,6 +184,7 @@ static enum MHD_Result handle_request(void *cls, struct MHD_Connection *con,
 		return MHD_NO;
 	}
 	free(query);
+	struct shopify_session *sessions = container->sessions;
 	int nsessions = 0;
 	while (sessions[nsessions].shop)
 		nsessions++;
@@ -343,7 +343,8 @@ void shopify_app(const char *api_key, const char *api_secret_key,
 {
 	crypt_init();
 	request_init();
-	sessions = malloc(sizeof(struct shopify_session));
+	struct shopify_session *sessions
+		= malloc(sizeof(struct shopify_session));
 	sessions[0].shop = NULL;
 	struct MHD_Daemon *daemon
 		= MHD_start_daemon(MHD_USE_INTERNAL_POLLING_THREAD, 3000, NULL,
@@ -355,7 +356,8 @@ void shopify_app(const char *api_key, const char *api_secret_key,
 				app_id,
 				scope,
 				index,
-				apis
+				apis,
+				sessions
 			}, MHD_OPTION_END);
 	getchar();
 	MHD_stop_daemon(daemon);
