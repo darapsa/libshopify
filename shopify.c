@@ -153,8 +153,32 @@ static enum MHD_Result handle_request(void *cls, struct MHD_Connection *con,
 		*con_cls = params;
 		return MHD_YES;
 	}
-	MHD_get_connection_values(con, MHD_GET_ARGUMENT_KIND, iterate, &params);
 	struct container *container = cls;
+	struct MHD_Response *res = NULL;
+	enum MHD_Result ret = MHD_NO;
+
+	char *dot = strrchr(url, '.');
+	if (dot && (!strcmp(dot, ".js") || !strcmp(dot, ".wasm")
+				|| !strcmp(dot, ".data"))) {
+		char path[strlen(container->js_dir) + strlen(url) + 1];
+		sprintf(path, "%s%s", container->js_dir, url);
+		int fd = open(path, O_RDONLY);
+		if (fd == -1) {
+			static char *notfound = "Not Found";
+			res = MHD_create_response_from_buffer(strlen(notfound),
+					notfound, MHD_RESPMEM_PERSISTENT);
+			ret = MHD_queue_response(con, MHD_HTTP_NOT_FOUND, res);
+		} else {
+			struct stat sb;
+			fstat(fd, &sb);
+			res = MHD_create_response_from_fd(sb.st_size, fd);
+			close(fd);
+			ret = MHD_queue_response(con, MHD_HTTP_OK, res);
+		}
+		return ret;
+	}
+
+	MHD_get_connection_values(con, MHD_GET_ARGUMENT_KIND, iterate, &params);
 	const char *api_key = container->api_key;
 	const size_t api_key_len = strlen(api_key);
 	const char *api_secret_key = container->api_secret_key;
@@ -291,8 +315,6 @@ static enum MHD_Result handle_request(void *cls, struct MHD_Connection *con,
 	struct shopify_session *session = bsearch(&(struct shopify_session)
 			{ shop }, sessions, nsessions,
 			sizeof(struct shopify_session), keycmp);
-	struct MHD_Response *res = NULL;
-	enum MHD_Result ret = MHD_NO;
 	if (!strcmp(url, redir_url)) {
 		const char *code = ((struct parameter *)bsearch(
 					&(struct parameter){ "code" }, params,
