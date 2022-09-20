@@ -59,6 +59,7 @@ extern inline void request_cleanup();
 extern inline void accesstoken_parse(const char *, struct shopify_session *);
 extern inline bool sessiontoken_isvalid(const char *token, const char *key,
 		const char *secret_key, const char *shop);
+
 struct parameter {
 	char *key;
 	char *val;
