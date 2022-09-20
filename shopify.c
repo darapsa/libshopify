@@ -180,11 +180,14 @@ static enum MHD_Result handle_request(void *cls, struct MHD_Connection *con,
 					MHD_RESPMEM_MUST_COPY);
 			static const char *js_type = "application/javascript";
 			static const char *wasm_type = "application/wasm";
+			static const char *data_type = "text/html";
 			const char *type = NULL;
 			if (!strcmp(dot, ".js"))
 				type = js_type;
 			else if (!strcmp(dot, ".wasm"))
 				type = wasm_type;
+			else if (!strcmp(dot, ".data"))
+				type = data_type;
 			MHD_add_response_header(res, "Content-Type", type);
 			ret = MHD_queue_response(con, MHD_HTTP_OK, res);
 		}
