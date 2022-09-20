@@ -54,8 +54,8 @@ static inline void request_graphql(const char *query,
 	struct curl_slist *list = NULL;
 	char header[TOKEN_HEADER_LEN + strlen(session->access_token) + 1];
 	sprintf(header, TOKEN_HEADER, session->access_token);
-	curl_slist_append(list, header);
-	curl_slist_append(list, "Content-Type: application/graphql");
+	list = curl_slist_append(list, header);
+	list = curl_slist_append(list, "Content-Type: application/graphql");
 	curl_easy_setopt(curl, CURLOPT_HTTPHEADER, list);
 	curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, append);
 	curl_easy_setopt(curl, CURLOPT_WRITEDATA, json);
