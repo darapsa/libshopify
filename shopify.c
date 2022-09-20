@@ -312,7 +312,7 @@ static enum MHD_Result handle_request(void *cls, struct MHD_Connection *con,
 			if (!strcmp(url, api->url)
 					&& !strcmp(method, api->method)) {
 				char *json = NULL;
-				api->cb(api->arg, session, json);
+				api->cb(api->arg, session, &json);
 				res = MHD_create_response_from_buffer(
 						strlen(json), json,
 						MHD_RESPMEM_MUST_FREE);
