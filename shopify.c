@@ -355,10 +355,10 @@ static enum MHD_Result handle_request(void *cls, struct MHD_Connection *con,
 			char html[sb.st_size + 1];
 			read(fd, html, sb.st_size);
 			close(fd);
-			const size_t index_len = sb.st_size - strlen("%s") * 4
-				+ api_key_len + host_len + app_url_len * 2;
+			const size_t index_len = sb.st_size - strlen("%s") * 2
+				+ api_key_len + host_len;
 			char index[index_len + 1];
-			sprintf(index, html, api_key, host, app_url, app_url);
+			sprintf(index, html, api_key, host);
 			res = MHD_create_response_from_buffer(index_len, index,
 					MHD_RESPMEM_MUST_COPY);
 			MHD_add_response_header(res, "Content-Security-Policy",
