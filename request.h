@@ -59,9 +59,6 @@ static inline void request_graphql(const char *query,
 	curl_easy_setopt(curl, CURLOPT_POSTFIELDS, query);
 	curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, append);
 	curl_easy_setopt(curl, CURLOPT_WRITEDATA, json);
-#ifdef DEBUG
-	curl_easy_setopt(curl, CURLOPT_VERBOSE, 1L);
-#endif
 	curl_easy_perform(curl);
 	curl_slist_free_all(list);
 	curl_easy_cleanup(curl);
