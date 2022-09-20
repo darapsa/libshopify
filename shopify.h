@@ -1,14 +1,19 @@
 #ifndef SHOPIFY_H
 #define SHOPIFY_H
 
+struct shopify_session {
+	char *shop;
+	char *nonce;
+	char *access_token;
+	char *scopes;
+};
+
 struct shopify_api {
 	char *url;
 	char *method;
-	void (*cb)();
+	void (*cb)(const char *, const struct shopify_session *, char **);
 	void *arg;
 };
-
-struct shopify_session;
 
 #ifdef __cplusplus
 extern "C" {

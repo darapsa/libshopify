@@ -7,7 +7,6 @@
 #include "base64.h"
 #include "regex.h"
 #include "config.h"
-#include "session.h"
 #include "request.h"
 #include "accesstoken.h"
 #include "sessiontoken.h"
