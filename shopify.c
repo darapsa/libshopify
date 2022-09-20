@@ -72,6 +72,7 @@ struct container {
 	const char *app_id;
 	const char *scopes;
 	const char *index;
+	const char *js_dir;
 	const struct shopify_api *apis;
 	struct shopify_session *sessions;
 };
@@ -394,7 +395,7 @@ static enum MHD_Result handle_request(void *cls, struct MHD_Connection *con,
 
 void shopify_app(const char *api_key, const char *api_secret_key,
 		const char *app_url, const char *redir_url, const char *app_id,
-		const char *scopes, const char *index,
+		const char *scopes, const char *index, const char *js_dir,
 		const struct shopify_api apis[])
 {
 	crypt_init();
@@ -412,6 +413,7 @@ void shopify_app(const char *api_key, const char *api_secret_key,
 				app_id,
 				scopes,
 				index,
+				js_dir,
 				apis,
 				sessions
 			}, MHD_OPTION_END);

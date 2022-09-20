@@ -21,7 +21,7 @@ extern "C" {
 
 void shopify_app(const char *api_key, const char *api_secret_key,
 		const char *app_url, const char *redir_url, const char *app_id,
-		const char *scopes, const char *index,
+		const char *scopes, const char *index, const char *js_dir,
 		const struct shopify_api apis[]);
 void shopify_graphql(const char *query, const struct shopify_session *session,
 		char **json);
