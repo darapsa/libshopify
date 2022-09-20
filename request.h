@@ -39,9 +39,6 @@ static inline void request_gettoken(const char *host, const char *key,
 	curl_easy_setopt(curl, CURLOPT_POSTFIELDS, post);
 	curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, append);
 	curl_easy_setopt(curl, CURLOPT_WRITEDATA, json);
-#ifdef DEBUG
-	curl_easy_setopt(curl, CURLOPT_VERBOSE, 1L);
-#endif
 	curl_easy_perform(curl);
 	curl_easy_cleanup(curl);
 }
