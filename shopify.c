@@ -384,9 +384,11 @@ static enum MHD_Result handle_request(void *cls, struct MHD_Connection *con,
 					MHD_HTTP_TEMPORARY_REDIRECT, res);
 		}
 	}
-	free(dec_host);
-	clear(params);
-	free(params);
+	if (params) {
+		free(dec_host);
+		clear(params);
+		free(params);
+	}
 	return ret;
 }
 
