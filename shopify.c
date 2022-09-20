@@ -158,12 +158,14 @@ static enum MHD_Result handle_request(void *cls, struct MHD_Connection *con,
 	enum MHD_Result ret = MHD_NO;
 
 	char *dot = strrchr(url, '.');
-	if (dot && (!strcmp(dot, ".js") || !strcmp(dot, ".wasm")
+	if (dot && !strcmp(method, "GET")
+			&& (!strcmp(dot, ".js") || !strcmp(dot, ".wasm")
 				|| !strcmp(dot, ".data"))) {
 		char path[strlen(container->js_dir) + strlen(url) + 1];
 		sprintf(path, "%s%s", container->js_dir, url);
 		int fd = open(path, O_RDONLY);
 		if (fd == -1) {
+			close(fd);
 			static char *notfound = "Not Found";
 			res = MHD_create_response_from_buffer(strlen(notfound),
 					notfound, MHD_RESPMEM_PERSISTENT);
@@ -171,8 +173,19 @@ static enum MHD_Result handle_request(void *cls, struct MHD_Connection *con,
 		} else {
 			struct stat sb;
 			fstat(fd, &sb);
-			res = MHD_create_response_from_fd(sb.st_size, fd);
+			char file[sb.st_size + 1];
+			read(fd, file, sb.st_size);
 			close(fd);
+			res = MHD_create_response_from_buffer(sb.st_size, file,
+					MHD_RESPMEM_MUST_COPY);
+			static const char *js_type = "application/javascript";
+			static const char *wasm_type = "application/wasm";
+			const char *type = NULL;
+			if (!strcmp(dot, ".js"))
+				type = js_type;
+			else if (!strcmp(dot, ".wasm"))
+				type = wasm_type;
+			MHD_add_response_header(res, "Content-Type", type);
 			ret = MHD_queue_response(con, MHD_HTTP_OK, res);
 		}
 		return ret;
