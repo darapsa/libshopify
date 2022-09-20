@@ -231,6 +231,7 @@ static enum MHD_Result handle_request(void *cls, struct MHD_Connection *con,
 		}
 	} else {
 		free(params);
+		params = NULL;
 		char *referer = NULL;
 		MHD_get_connection_values(con, MHD_HEADER_KIND, iterate,
 				(char **[]){ &session_token, &referer });
@@ -303,6 +304,8 @@ static enum MHD_Result handle_request(void *cls, struct MHD_Connection *con,
 		free(access_token);
 		ret = redirect(dec_host, app_id, con, &res);
 	} else if (session_token) {
+		free(session_token);
+		free(shop);
 		int i = 0;
 		const struct shopify_api *api;
 		while ((api = &(container->apis[i++])))
