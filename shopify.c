@@ -351,7 +351,12 @@ static enum MHD_Result handle_request(void *cls, struct MHD_Connection *con,
 			if (!strcmp(url, api->url)
 					&& !strcmp(method, api->method)) {
 				char *json = NULL;
-				api->cb(api->arg, session, &json);
+				if (!strcmp(method, "POST")
+						&& upload_data_size) {
+					api->cb(upload_data, session, &json);
+					*upload_data_size = 0;
+				} else
+					api->cb(api->arg, session, &json);
 				res = MHD_create_response_from_buffer(
 						strlen(json), json,
 						MHD_RESPMEM_MUST_FREE);
