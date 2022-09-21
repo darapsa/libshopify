@@ -71,7 +71,7 @@ struct container {
 	const char *redir_url;
 	const char *app_id;
 	const char *scopes;
-	const char *index;
+	char *(*html)(const char *);
 	const char *js_dir;
 	const struct shopify_api *apis;
 	struct shopify_session *sessions;
@@ -365,18 +365,9 @@ static enum MHD_Result handle_request(void *cls, struct MHD_Connection *con,
 			}
 	} else if (session && session->access_token) {
 		if (embedded) {
-			int fd = open(container->index, O_RDONLY);
-			struct stat sb;
-			fstat(fd, &sb);
-			char html[sb.st_size + 1];
-			read(fd, html, sb.st_size);
-			close(fd);
-			const size_t index_len = sb.st_size - strlen("%s") * 4
-				+ api_key_len + host_len + app_url_len * 2;
-			char index[index_len + 1];
-			sprintf(index, html, api_key, host, app_url, app_url);
-			res = MHD_create_response_from_buffer(index_len, index,
-					MHD_RESPMEM_MUST_COPY);
+			char *html = container->html(host);
+			res = MHD_create_response_from_buffer(strlen(html),
+					html, MHD_RESPMEM_MUST_FREE);
 			MHD_add_response_header(res, "Content-Security-Policy",
 					header);
 			ret = MHD_queue_response(con, MHD_HTTP_OK, res);
@@ -433,8 +424,8 @@ static enum MHD_Result handle_request(void *cls, struct MHD_Connection *con,
 
 void shopify_app(const char *api_key, const char *api_secret_key,
 		const char *app_url, const char *redir_url, const char *app_id,
-		const char *scopes, const char *index, const char *js_dir,
-		const struct shopify_api apis[])
+		const char *scopes, char *(*html)(const char *host),
+		const char *js_dir, const struct shopify_api apis[])
 {
 	crypt_init();
 	request_init();
@@ -450,7 +441,7 @@ void shopify_app(const char *api_key, const char *api_secret_key,
 				redir_url,
 				app_id,
 				scopes,
-				index,
+				html,
 				js_dir,
 				apis,
 				sessions
