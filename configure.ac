@@ -7,6 +7,7 @@ PKG_CHECK_MODULES([DEPS], [libmicrohttpd libgcrypt gnutls libpcre2-8 libcurl jso
 AC_CHECK_HEADERS([fcntl.h])
 AC_CHECK_HEADER_STDBOOL
 AC_C_INLINE
+AC_CHECK_FUNCS([strrchr])
 AC_FUNC_MALLOC
 AC_FUNC_REALLOC
 AC_TYPE_SIZE_T
