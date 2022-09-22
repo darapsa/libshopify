@@ -1,12 +1,12 @@
 #include <stdbool.h>
 #include <fcntl.h>
 #include <sys/stat.h>
-#include <gnutls/gnutls.h>
 #include <microhttpd.h>
+#include <gnutls/gnutls.h>
+#include <toml.h>
 #include "shopify.h"
 #include "crypt.h"
 #include "regex.h"
-#include "config.h"
 #include "request.h"
 #include "accesstoken.h"
 #include "sessiontoken.h"
@@ -47,7 +47,6 @@ extern inline void crypt_init();
 extern inline bool crypt_macmatch(const char *, const char *, const char *);
 extern inline void crypt_getnonce(char [], const size_t);
 extern inline bool regex_match(const char *);
-extern inline void config_getscopes(const char *, char **);
 extern inline void request_init();
 extern inline void request_gettoken(const char *, const char *, const char *,
 		const char *, char **);
@@ -388,20 +387,24 @@ static enum MHD_Result handle_request(void *cls, struct MHD_Connection *con,
 		} else
 			ret = redirect(dec_host, app_id, con, &res);
 	} else {
-		const size_t dec_host_len = strlen(dec_host);
-		char *scopes = NULL;
-		config_getscopes(container->scopes, &scopes);
-		const size_t scopes_len = strlen(scopes);
+		FILE *fp = fopen(container->scopes, "r");
+		toml_table_t* toml = toml_parse_file(fp, NULL, 0);
+		fclose(fp);
+		char *scopes = toml_string_in(toml, "scopes").u.s;
+		toml_free(toml);
+
 		static const size_t nonce_len = 64;
 		char nonce[nonce_len + 1];
 		crypt_getnonce(nonce, nonce_len);
-		const size_t auth_url_len = AUTH_URL_LEN + dec_host_len
-			+ api_key_len + scopes_len + app_url_len
+
+		const size_t auth_url_len = AUTH_URL_LEN + strlen(dec_host)
+			+ api_key_len + strlen(scopes) + app_url_len
 			+ strlen(redir_url) + nonce_len;
 		char auth_url[auth_url_len + 1];
 		sprintf(auth_url, AUTH_URL, dec_host, api_key, scopes, app_url,
 				redir_url, nonce);
 		free(scopes);
+
 		sessions = realloc(sessions, sizeof(struct shopify_session)
 				* (nsessions + 2));
 		sessions[nsessions].shop = malloc(shop_len + 1);
