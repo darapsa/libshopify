@@ -1,12 +1,13 @@
 #include <stdbool.h>
 #include <fcntl.h>
 #include <sys/stat.h>
-#include <microhttpd.h>
+#define PCRE2_CODE_UNIT_WIDTH 8
+#include <pcre2.h>
 #include <gnutls/gnutls.h>
 #include <toml.h>
+#include <microhttpd.h>
 #include "shopify.h"
 #include "crypt.h"
-#include "regex.h"
 #include "request.h"
 #include "accesstoken.h"
 #include "sessiontoken.h"
@@ -46,7 +47,6 @@
 extern inline void crypt_init();
 extern inline bool crypt_macmatch(const char *, const char *, const char *);
 extern inline void crypt_getnonce(char [], const size_t);
-extern inline bool regex_match(const char *);
 extern inline void request_init();
 extern inline void request_gettoken(const char *, const char *, const char *,
 		const char *, char **);
@@ -204,6 +204,7 @@ static enum MHD_Result handle_request(void *cls, struct MHD_Connection *con,
 	while (sessions[nsessions].shop)
 		nsessions++;
 	qsort(sessions, nsessions, sizeof(struct shopify_session), keycmp);
+
 	char *shop = NULL;
 	size_t shop_len = 0;
 	char *session_token = NULL;
@@ -218,12 +219,29 @@ static enum MHD_Result handle_request(void *cls, struct MHD_Connection *con,
 						sizeof(struct parameter),
 						keycmp)))
 			shop = param->val;
-		if (!shop || !regex_match(shop)) {
+		if (!shop) {
 			clear(params);
 			free(params);
 			return MHD_NO;
 		}
 		shop_len = strlen(shop);
+
+		pcre2_code *re = pcre2_compile((PCRE2_SPTR)
+				"^[a-zA-Z0-9][a-zA-Z0-9\\-]*\\.myshopify\\.com",
+				PCRE2_ZERO_TERMINATED, 0, &(int){ 0 },
+				&(PCRE2_SIZE){ 0 }, NULL);
+		pcre2_match_data *match_data
+			= pcre2_match_data_create_from_pattern(re, NULL);
+		int rc = pcre2_match(re, (PCRE2_SPTR)shop, strlen(shop), 0, 0,
+				match_data, NULL);
+		pcre2_match_data_free(match_data);
+		pcre2_code_free(re);
+		if (rc < 0) {
+			clear(params);
+			free(params);
+			return MHD_NO;
+		}
+
 		char *query = NULL;
 		for (int i = 0; i < nparams; i++) {
 			const char *key = params[i].key;
