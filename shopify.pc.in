@@ -8,4 +8,4 @@ Version: @PACKAGE_VERSION@
 Description: Shopify Admin API Library for C
 URL: http://darapsa.org/?p=libshopify.git
 Cflags: -I${includedir}
-Libs: -L${libdir} -l@PACKAGE_NAME@ -lmicrohttpd -lgcrypt -lgnutls -lpcre2-8 -lcurl -ljson-c -ltoml -ll8w8jwt
+Libs: -L${libdir} -l@PACKAGE_NAME@ -lmicrohttpd -lgcrypt -lpcre2-8 -lcurl -ljson-c -ltoml -ll8w8jwt
