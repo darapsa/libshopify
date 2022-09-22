@@ -329,8 +329,8 @@ static enum MHD_Result handle_request(void *cls, struct MHD_Connection *con,
 				(unsigned char *)host,
 				strlen(host)
 			}, &result);
-		*dec_host = malloc(result.size + 1);
-		strlcpy(*dec_host, (const char *)result.data, result.size + 1);
+		dec_host = malloc(result.size + 1);
+		strlcpy(dec_host, (const char *)result.data, result.size + 1);
 		gnutls_free(result.data);
 	}
 
