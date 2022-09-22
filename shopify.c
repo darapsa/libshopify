@@ -98,7 +98,7 @@ static inline _Bool match(const char *shop)
 	return rc >= 0;
 }
 
-static void get_hs256(const char *api_secret_key, const char *data,
+static inline void get_hs256(const char *api_secret_key, const char *data,
 		const size_t data_len, unsigned char hs256[], size_t *hs256_len)
 {
 	gcry_mac_hd_t hd;
