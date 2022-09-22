@@ -110,7 +110,7 @@ static inline void clear(const struct parameter params[])
 	}
 }
 
-static int keycmp(const void *struct1, const void *struct2)
+static int compare(const void *struct1, const void *struct2)
 {
 	return strcmp(*(char **)struct1, *(char **)struct2);
 }
@@ -213,7 +213,7 @@ static enum MHD_Result handle_request(void *cls, struct MHD_Connection *con,
 	int nsessions = 0;
 	while (sessions[nsessions].shop)
 		nsessions++;
-	qsort(sessions, nsessions, sizeof(struct shopify_session), keycmp);
+	qsort(sessions, nsessions, sizeof(struct shopify_session), compare);
 	char *shop = NULL;
 	size_t shop_len = 0;
 	char *session_token = NULL;
@@ -222,11 +222,11 @@ static enum MHD_Result handle_request(void *cls, struct MHD_Connection *con,
 	while (params[nparams].key)
 		nparams++;
 	if (nparams) {
-		qsort(params, nparams, sizeof(struct parameter), keycmp);
+		qsort(params, nparams, sizeof(struct parameter), compare);
 		if ((param = bsearch(&(struct parameter){ "shop" }, params,
 						nparams,
 						sizeof(struct parameter),
-						keycmp)))
+						compare)))
 			shop = param->val;
 		if (!shop || !match(shop)) {
 			clear(params);
@@ -253,7 +253,7 @@ static enum MHD_Result handle_request(void *cls, struct MHD_Connection *con,
 		if ((param = bsearch(&(struct parameter){ "hmac" }, params,
 						nparams,
 						sizeof(struct parameter),
-						keycmp)))
+						compare)))
 			hmac = param->val;
 		if (!hmac) {
 			free(query);
@@ -290,12 +290,12 @@ static enum MHD_Result handle_request(void *cls, struct MHD_Connection *con,
 							{ "state" }, params,
 							nparams,
 							sizeof(struct parameter),
-							keycmp))->val,
+							compare))->val,
 					((struct shopify_session *)bsearch(
 						&(struct shopify_session)
 						{ shop }, sessions, nsessions,
 						sizeof(struct shopify_session),
-						keycmp))->nonce)) {
+						compare))->nonce)) {
 			clear(params);
 			free(params);
 			return MHD_NO;
@@ -386,10 +386,10 @@ static enum MHD_Result handle_request(void *cls, struct MHD_Connection *con,
 	if (params) {
 		host = ((struct parameter *)bsearch(&(struct parameter)
 					{ "host" }, params, nparams,
-					sizeof(struct parameter), keycmp))->val;
+					sizeof(struct parameter), compare))->val;
 		host_len = strlen(host);
 		param = bsearch(&(struct parameter){ "embedded" }, params,
-				nparams, sizeof(struct parameter), keycmp);
+				nparams, sizeof(struct parameter), compare);
 		embedded = param && !strcmp(param->val, "1");
 
 		gnutls_datum_t result;
@@ -408,12 +408,12 @@ static enum MHD_Result handle_request(void *cls, struct MHD_Connection *con,
 	sprintf(header, EMBEDDED_HEADER, shop);
 	struct shopify_session *session = bsearch(&(struct shopify_session)
 			{ shop }, sessions, nsessions,
-			sizeof(struct shopify_session), keycmp);
+			sizeof(struct shopify_session), compare);
 	if (!strcmp(url, redir_url)) {
 		const char *code = ((struct parameter *)bsearch(
 					&(struct parameter){ "code" }, params,
 					nparams, sizeof(struct parameter),
-					keycmp))->val;
+					compare))->val;
 
 		CURL *curl = curl_easy_init();
 		char *json = NULL;
