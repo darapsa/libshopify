@@ -44,12 +44,6 @@
 #define EMBEDDED_URL_LEN strlen(EMBEDDED_URL) - strlen("%s") * 2
 
 extern inline bool regex_match(const char *);
-extern inline void request_init();
-extern inline void request_gettoken(const char *, const char *, const char *,
-		const char *, char **);
-extern inline void request_graphql(const char *, const struct shopify_session *,
-		char **);
-extern inline void request_cleanup();
 extern inline bool sessiontoken_isvalid(const char *, const char *,
 		const char *, const char *);
 
@@ -491,7 +485,7 @@ void shopify_app(const char *api_key, const char *api_secret_key,
 		const char *js_dir, const struct shopify_api apis[])
 {
 	gcry_check_version("1.9.4");
-	request_init();
+	curl_global_init(CURL_GLOBAL_DEFAULT);
 	struct shopify_session *sessions
 		= malloc(sizeof(struct shopify_session));
 	sessions[0].shop = NULL;
@@ -521,11 +515,5 @@ void shopify_app(const char *api_key, const char *api_secret_key,
 		free(sessions[i++].shop);
 	}
 	free(sessions);
-	request_cleanup();
-}
-
-void shopify_graphql(const char *query, const struct shopify_session *session,
-		char **json)
-{
-	request_graphql(query, session, json);
+	curl_global_cleanup();
 }
