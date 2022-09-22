@@ -3,7 +3,6 @@
 #define PCRE2_CODE_UNIT_WIDTH 8
 #include <pcre2.h>
 #include <gcrypt.h>
-#include <gnutls/gnutls.h>
 #include <toml.h>
 #include <curl/curl.h>
 #include <json.h>
@@ -372,27 +371,20 @@ static enum MHD_Result handle_request(void *cls, struct MHD_Connection *con,
 
 	char *host = NULL;
 	size_t host_len = 0;
-	_Bool embedded = 0;
 	char *dec_host = NULL;
 	size_t dec_host_len = 0;
+	_Bool embedded = 0;
 	if (params) {
 		host = ((struct parameter *)bsearch(&(struct parameter)
 					{ "host" }, params, nparams,
-					sizeof(struct parameter), compare))->val;
+					sizeof(struct parameter),
+					compare))->val;
 		host_len = strlen(host);
+		l8w8jwt_base64_decode(0, host, host_len, (uint8_t **)&dec_host,
+				&dec_host_len);
 		param = bsearch(&(struct parameter){ "embedded" }, params,
 				nparams, sizeof(struct parameter), compare);
 		embedded = param && !strcmp(param->val, "1");
-
-		gnutls_datum_t result;
-		gnutls_base64_decode2(&(gnutls_datum_t){
-				(unsigned char *)host,
-				host_len
-			}, &result);
-		dec_host_len = result.size;
-		dec_host = malloc(dec_host_len + 1);
-		strlcpy(dec_host, (const char *)result.data, dec_host_len + 1);
-		gnutls_free(result.data);
 	}
 
 	static const char *header_tmpl
