@@ -8,6 +8,7 @@
 #include <curl/curl.h>
 #include <json.h>
 #include <l8w8jwt/decode.h>
+#include <l8w8jwt/base64.h>
 #include <microhttpd.h>
 #include "shopify.h"
 
@@ -176,6 +177,7 @@ static enum MHD_Result handle_request(void *cls, struct MHD_Connection *con,
 	const char *api_key = container->api_key;
 	const size_t api_key_len = strlen(api_key);
 	const char *api_secret_key = container->api_secret_key;
+	const size_t api_secret_key_len = strlen(api_secret_key);
 	const char *app_url = container->app_url;
 	const size_t app_url_len = strlen(app_url);
 	const char *redir_url = container->redir_url;
@@ -235,7 +237,7 @@ static enum MHD_Result handle_request(void *cls, struct MHD_Connection *con,
 		gcry_mac_hd_t hd;
 		gcry_mac_open(&hd, GCRY_MAC_HMAC_SHA256, GCRY_MAC_FLAG_SECURE,
 				NULL);
-		gcry_mac_setkey(hd, api_secret_key, strlen(api_secret_key));
+		gcry_mac_setkey(hd, api_secret_key, api_secret_key_len);
 		gcry_mac_write(hd, query, strlen(query));
 		static size_t hex_len = 32;
 		unsigned char hex[hex_len];
@@ -318,7 +320,7 @@ static enum MHD_Result handle_request(void *cls, struct MHD_Connection *con,
 		params.jwt = (char *)session_token;
 		params.jwt_length = strlen(session_token);
 		params.verification_key = (unsigned char *)api_secret_key;
-		params.verification_key_length = strlen(api_secret_key);
+		params.verification_key_length = api_secret_key_len;
 		params.validate_exp = 1;
 		params.validate_nbf = 1;
 		params.validate_aud = (char *)api_key;
@@ -329,18 +331,37 @@ static enum MHD_Result handle_request(void *cls, struct MHD_Connection *con,
 				&claims_len);
 		if (validation != L8W8JWT_NBF_FAILURE)
 			printf("JWT payload nbf is invalid.\n");
-		struct l8w8jwt_claim *dest
-			= l8w8jwt_get_claim(claims, claims_len, "dest", 4);
-		_Bool iss_valid = !strncmp( l8w8jwt_get_claim(claims,
-					claims_len, "iss", 3)->value,
+		struct l8w8jwt_claim *dest = l8w8jwt_get_claim(claims,
+				claims_len, "dest", 4);
+		_Bool iss_valid = !strncmp(l8w8jwt_get_claim(claims, claims_len,
+					"iss", 3)->value,
 				dest->value, dest->value_length);
 		printf("JWT payload sub: %s\n", l8w8jwt_get_claim(claims,
 					claims_len, "sub", 3)->value);
 		l8w8jwt_free_claims(claims, claims_len);
-		if (decode != L8W8JWT_SUCCESS
-				|| validation != L8W8JWT_VALID
+		if (decode != L8W8JWT_SUCCESS || validation != L8W8JWT_VALID
 				&& validation != L8W8JWT_NBF_FAILURE
 				|| !iss_valid) {
+			free(session_token);
+			free(shop);
+			return MHD_NO;
+		}
+
+		char *last_dot = strrchr(session_token, '.');
+		gcry_mac_hd_t hd;
+		gcry_mac_open(&hd, GCRY_MAC_HMAC_SHA256,
+				GCRY_MAC_FLAG_SECURE, NULL);
+		gcry_mac_setkey(hd, api_secret_key, api_secret_key_len);
+		gcry_mac_write(hd, session_token, last_dot - session_token);
+		static size_t hmacsha256_len = 32;
+		unsigned char hmacsha256[hmacsha256_len];
+		gcry_mac_read(hd, hmacsha256, &hmacsha256_len);
+		gcry_mac_close(hd);
+		char *sig;
+		size_t sig_len;
+		l8w8jwt_base64_encode(1, hmacsha256, hmacsha256_len, &sig,
+				&sig_len);
+		if (strncmp(++last_dot, sig, sig_len)) {
 			free(session_token);
 			free(shop);
 			return MHD_NO;
@@ -398,7 +419,7 @@ static enum MHD_Result handle_request(void *cls, struct MHD_Connection *con,
 		static const char *post_tmpl
 			= "client_id=%s&client_secret=%s&code=%s";
 		char post[strlen(post_tmpl) - strlen("%s") * 3 + strlen(api_key)
-			+ strlen(api_secret_key) + strlen(code) + 1];
+			+ api_secret_key_len + strlen(code) + 1];
 		sprintf(post, post_tmpl, api_key, api_secret_key, code);
 		curl_easy_setopt(curl, CURLOPT_POSTFIELDS, post);
 		curl_easy_perform(curl);
