@@ -36,7 +36,7 @@ static enum MHD_Result iterate(void *cls, enum MHD_ValueKind kind,
 		case MHD_GET_ARGUMENT_KIND:
 			;
 			struct parameter **params = cls;
-			int nparams = 0;
+			size_t nparams = 0;
 			while ((*params)[nparams].key)
 				nparams++;
 			*params = realloc(*params, sizeof(struct parameter)
@@ -71,7 +71,7 @@ static enum MHD_Result iterate(void *cls, enum MHD_ValueKind kind,
 
 static inline void clear(const struct parameter params[])
 {
-	int i = 0;
+	size_t i = 0;
 	while (params[i].key) {
 		free(params[i].val);
 		free(params[i++].key);
@@ -107,7 +107,7 @@ static size_t append(char *data, size_t size, size_t nmemb, char **res)
 	return realsize;
 }
 
-static inline int redirect(const char *host, const char *id,
+static inline enum MHD_Result redirect(const char *host, const char *id,
 		struct MHD_Connection *con, struct MHD_Response **res)
 {
 	static const char *tmpl = "https://%s/apps/%s/";
@@ -180,7 +180,7 @@ static enum MHD_Result handle_request(void *cls, struct MHD_Connection *con,
 	const size_t app_url_len = strlen(app_url);
 	const char *redir_url = container->redir_url;
 	struct shopify_session *sessions = container->sessions;
-	int nsessions = 0;
+	size_t nsessions = 0;
 	while (sessions[nsessions].shop)
 		nsessions++;
 	qsort(sessions, nsessions, sizeof(struct shopify_session), compare);
@@ -188,7 +188,7 @@ static enum MHD_Result handle_request(void *cls, struct MHD_Connection *con,
 	size_t shop_len = 0;
 	char *session_token = NULL;
 	struct parameter *param = NULL;
-	int nparams = 0;
+	size_t nparams = 0;
 	while (params[nparams].key)
 		nparams++;
 	if (nparams) {
@@ -205,7 +205,7 @@ static enum MHD_Result handle_request(void *cls, struct MHD_Connection *con,
 		}
 		shop_len = strlen(shop);
 		char *query = NULL;
-		for (int i = 0; i < nparams; i++) {
+		for (size_t i = 0; i < nparams; i++) {
 			const char *key = params[i].key;
 			const char *val = params[i].val;
 			if (strcmp(key, "hmac")) {
@@ -243,7 +243,7 @@ static enum MHD_Result handle_request(void *cls, struct MHD_Connection *con,
 		gcry_mac_close(hd);
 		char hmacsha256_str[hmacsha256_len * 2 + 1];
 		hmacsha256_str[0] ='\0';
-		for (int i = 0; i < hmacsha256_len; i++)
+		for (size_t i = 0; i < hmacsha256_len; i++)
 			sprintf(hmacsha256_str, "%s%02x", hmacsha256_str,
 					hmacsha256[i]);
 		if (strcmp(hmac, hmacsha256_str)) {
@@ -433,7 +433,7 @@ static enum MHD_Result handle_request(void *cls, struct MHD_Connection *con,
 	} else if (session_token) {
 		free(session_token);
 		free(shop);
-		int i = 0;
+		size_t i = 0;
 		const struct shopify_api *api;
 		while ((api = &(container->apis[i++])))
 			if (!strcmp(url, api->url)
@@ -479,7 +479,7 @@ static enum MHD_Result handle_request(void *cls, struct MHD_Connection *con,
 		const size_t hex_len = nonce_len / 2;
 		unsigned char hex[hex_len];
 		gcry_create_nonce(hex, hex_len);
-		for (int i = 0; i < hex_len; i++)
+		for (size_t i = 0; i < hex_len; i++)
 			sprintf(nonce, "%s%02x", nonce, hex[i]);
 
 		static const char *tmpl = "https://%s/oauth/authorize"
@@ -574,7 +574,7 @@ void shopify_app(const char *api_key, const char *api_secret_key,
 			}, MHD_OPTION_END);
 	getchar();
 	MHD_stop_daemon(daemon);
-	int i = 0;
+	size_t i = 0;
 	while (sessions[i].shop) {
 		if (sessions[i].scopes)
 			free(sessions[i].scopes);
