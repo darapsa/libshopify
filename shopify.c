@@ -10,7 +10,6 @@
 #include "shopify.h"
 #include "regex.h"
 #include "sessiontoken.h"
-#include "common.h"
 
 #define AUTH_URL \
 	"https://%s/oauth/authorize?client_id=%s&scope=%s&redirect_uri=%s%s"\
@@ -118,6 +117,15 @@ static inline void clear(const struct parameter params[])
 static int keycmp(const void *struct1, const void *struct2)
 {
 	return strcmp(*(char **)struct1, *(char **)struct2);
+}
+
+static size_t append(char *data, size_t size, size_t nmemb, char **res)
+{
+	size_t realsize = size * nmemb;
+	size_t res_len = *res ? strlen(*res) : 0;
+	*res = realloc(*res, res_len + realsize + 1);
+	strlcpy(&(*res)[res_len], data, realsize + 1);
+	return realsize;
 }
 
 static inline int redirect(const char *host, const char *id,
@@ -533,4 +541,33 @@ void shopify_app(const char *api_key, const char *api_secret_key,
 	}
 	free(sessions);
 	curl_global_cleanup();
+}
+
+void shopify_graphql(const char *query, const struct shopify_session *session,
+		char **json)
+{
+	CURL *curl = curl_easy_init();
+	curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, append);
+	curl_easy_setopt(curl, CURLOPT_WRITEDATA, json);
+	curl_easy_setopt(curl, CURLOPT_POSTFIELDS, query);
+
+	static const char *url_tmpl
+		= "https://%s/admin/api/2022-07/graphql.json";
+	char url[strlen(url_tmpl) - strlen("%s") + strlen(session->shop) + 1];
+	sprintf(url, url_tmpl, session->shop);
+	curl_easy_setopt(curl, CURLOPT_URL, url);
+
+	static const char *hdr_tmpl = "X-Shopify-Access-Token: %s";
+	char header[strlen(hdr_tmpl) - strlen("%s")
+		+ strlen(session->access_token) + 1];
+	sprintf(header, hdr_tmpl, session->access_token);
+
+	struct curl_slist *list = NULL;
+	list = curl_slist_append(list, header);
+	list = curl_slist_append(list, "Content-Type: application/graphql");
+	curl_easy_setopt(curl, CURLOPT_HTTPHEADER, list);
+
+	curl_easy_perform(curl);
+	curl_slist_free_all(list);
+	curl_easy_cleanup(curl);
 }
