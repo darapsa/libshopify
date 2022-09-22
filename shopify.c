@@ -4,12 +4,13 @@
 #include <gcrypt.h>
 #include <gnutls/gnutls.h>
 #include <toml.h>
+#include <curl/curl.h>
 #include <json.h>
 #include <microhttpd.h>
 #include "shopify.h"
 #include "regex.h"
-#include "request.h"
 #include "sessiontoken.h"
+#include "common.h"
 
 #define AUTH_URL \
 	"https://%s/oauth/authorize?client_id=%s&scope=%s&redirect_uri=%s%s"\
@@ -326,6 +327,7 @@ static enum MHD_Result handle_request(void *cls, struct MHD_Connection *con,
 	size_t host_len = 0;
 	bool embedded = false;
 	char *dec_host = NULL;
+	size_t dec_host_len = 0;
 	if (params) {
 		host = ((struct parameter *)bsearch(&(struct parameter)
 					{ "host" }, params, nparams,
@@ -338,10 +340,11 @@ static enum MHD_Result handle_request(void *cls, struct MHD_Connection *con,
 		gnutls_datum_t result;
 		gnutls_base64_decode2(&(gnutls_datum_t){
 				(unsigned char *)host,
-				strlen(host)
+				host_len
 			}, &result);
-		dec_host = malloc(result.size + 1);
-		strlcpy(dec_host, (const char *)result.data, result.size + 1);
+		dec_host_len = result.size;
+		dec_host = malloc(dec_host_len + 1);
+		strlcpy(dec_host, (const char *)result.data, dec_host_len + 1);
 		gnutls_free(result.data);
 	}
 
@@ -356,13 +359,27 @@ static enum MHD_Result handle_request(void *cls, struct MHD_Connection *con,
 					&(struct parameter){ "code" }, params,
 					nparams, sizeof(struct parameter),
 					keycmp))->val;
-		char *access_token = NULL;
-		request_gettoken(dec_host, api_key, api_secret_key, code,
-				&access_token);
+
+		CURL *curl = curl_easy_init();
+		char *json = NULL;
+		curl_easy_setopt(curl, CURLOPT_WRITEDATA, &json);
+		curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, append);
+		static const char *url_tmpl = "https://%s/oauth/access_token";
+		char url[strlen(url_tmpl) - strlen("%s") + dec_host_len + 1];
+		sprintf(url, url_tmpl, dec_host);
+		curl_easy_setopt(curl, CURLOPT_URL, url);
+		static const char *post_tmpl
+			= "client_id=%s&client_secret=%s&code=%s";
+		char post[strlen(post_tmpl) - strlen("%s") * 3 + strlen(api_key)
+			+ strlen(api_secret_key) + strlen(code) + 1];
+		sprintf(post, post_tmpl, api_key, api_secret_key, code);
+		curl_easy_setopt(curl, CURLOPT_POSTFIELDS, post);
+		curl_easy_perform(curl);
+		curl_easy_cleanup(curl);
 
 		json_tokener *tokener = json_tokener_new();
-		json_object *obj = json_tokener_parse_ex(tokener, access_token,
-				strlen(access_token));
+		json_object *obj = json_tokener_parse_ex(tokener, json,
+				strlen(json));
 		struct json_object_iterator iter = json_object_iter_begin(obj);
 		struct json_object_iterator iter_end
 			= json_object_iter_end(obj);
@@ -382,7 +399,7 @@ static enum MHD_Result handle_request(void *cls, struct MHD_Connection *con,
 			json_object_iter_next(&iter);
 		}
 		json_tokener_free(tokener);
-		free(access_token);
+		free(json);
 
 		ret = redirect(dec_host, app_id, con, &res);
 	} else if (session_token) {
@@ -437,7 +454,7 @@ static enum MHD_Result handle_request(void *cls, struct MHD_Connection *con,
 		for (int i = 0; i < hex_len; i++)
 			sprintf(nonce, "%s%02x", nonce, hex[i]);
 
-		const size_t auth_url_len = AUTH_URL_LEN + strlen(dec_host)
+		const size_t auth_url_len = AUTH_URL_LEN + dec_host_len
 			+ api_key_len + strlen(scopes) + app_url_len
 			+ strlen(redir_url) + nonce_len;
 		char auth_url[auth_url_len + 1];

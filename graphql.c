@@ -1,8 +1,6 @@
-#include "request.h"
+#include <curl/curl.h>
 #include "shopify.h"
-
-extern inline void request_gettoken(const char *, const char *, const char *,
-		const char *, char **);
+#include "common.h"
 
 void shopify_graphql(const char *query, const struct shopify_session *session,
 		char **json)
