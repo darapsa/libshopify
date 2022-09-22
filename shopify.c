@@ -237,16 +237,15 @@ static enum MHD_Result handle_request(void *cls, struct MHD_Connection *con,
 				NULL);
 		gcry_mac_setkey(hd, api_secret_key, strlen(api_secret_key));
 		gcry_mac_write(hd, query, strlen(query));
-		static size_t hmacsha256_len = 32;
-		unsigned char hmacsha256[hmacsha256_len];
-		gcry_mac_read(hd, hmacsha256, &hmacsha256_len);
+		static size_t hex_len = 32;
+		unsigned char hex[hex_len];
+		gcry_mac_read(hd, hex, &hex_len);
 		gcry_mac_close(hd);
-		char hmacsha256_str[hmacsha256_len * 2 + 1];
-		hmacsha256_str[0] ='\0';
-		for (size_t i = 0; i < hmacsha256_len; i++)
-			sprintf(hmacsha256_str, "%s%02x", hmacsha256_str,
-					hmacsha256[i]);
-		if (strcmp(hmac, hmacsha256_str)) {
+		char hmacsha256[hex_len * 2 + 1];
+		hmacsha256[0] = '\0';
+		for (size_t i = 0; i < hex_len; i++)
+			sprintf(hmacsha256, "%s%02x", hmacsha256, hex[i]);
+		if (strcmp(hmac, hmacsha256)) {
 			free(query);
 			clear(params);
 			free(params);
