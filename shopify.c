@@ -1,4 +1,3 @@
-#include <stdbool.h>
 #include <fcntl.h>
 #include <sys/stat.h>
 #define PCRE2_CODE_UNIT_WIDTH 8
@@ -9,8 +8,8 @@
 #include <curl/curl.h>
 #include <json.h>
 #include <microhttpd.h>
+#include <l8w8jwt/decode.h>
 #include "shopify.h"
-#include "sessiontoken.h"
 
 #define AUTH_URL \
 	"https://%s/oauth/authorize?client_id=%s&scope=%s&redirect_uri=%s%s"\
@@ -43,9 +42,6 @@
 
 #define EMBEDDED_URL "https://%s/apps/%s/"
 #define EMBEDDED_URL_LEN strlen(EMBEDDED_URL) - strlen("%s") * 2
-
-extern inline bool sessiontoken_isvalid(const char *, const char *,
-		const char *, const char *);
 
 struct parameter {
 	char *key;
@@ -244,7 +240,7 @@ static enum MHD_Result handle_request(void *cls, struct MHD_Connection *con,
 			const char *val = params[i].val;
 			if (strcmp(key, "hmac")) {
 				size_t query_len = query ? strlen(query) : 0;
-				bool ampersand_len = i != nparams - 1;
+				_Bool ampersand_len = i != nparams - 1;
 				query = realloc(query, query_len + strlen(key)
 						+ strlen("=") + strlen(val)
 						+ ampersand_len + 1);
@@ -307,6 +303,7 @@ static enum MHD_Result handle_request(void *cls, struct MHD_Connection *con,
 	} else {
 		free(params);
 		params = NULL;
+
 		char *referer = NULL;
 		MHD_get_connection_values(con, MHD_HEADER_KIND, iterate,
 				(char **[]){ &session_token, &referer });
@@ -320,6 +317,7 @@ static enum MHD_Result handle_request(void *cls, struct MHD_Connection *con,
 				free(referer);
 			return MHD_NO;
 		}
+
 		referer = &referer[app_url_len + 1];
 		char *tofree = referer;
 		char *pair = NULL;
@@ -333,13 +331,47 @@ static enum MHD_Result handle_request(void *cls, struct MHD_Connection *con,
 			free(tofree);
 			return MHD_NO;
 		}
+
 		pair = &pair[key_len];
-		shop_len = (strchrnul(pair, '&') - pair) * sizeof(char);
+		shop_len = strchrnul(pair, '&') - pair;
 		shop = malloc(shop_len + 1);
 		strlcpy(shop, pair, shop_len + 1);
 		free(tofree);
-		if (!match(shop) || !sessiontoken_isvalid(session_token,
-					api_key, api_secret_key, shop)) {
+		if (!match(shop)) {
+			free(session_token);
+			free(shop);
+			return MHD_NO;
+		}
+
+		struct l8w8jwt_decoding_params params;
+		l8w8jwt_decoding_params_init(&params);
+		params.alg = L8W8JWT_ALG_HS256;
+		params.jwt = (char *)session_token;
+		params.jwt_length = strlen(session_token);
+		params.verification_key = (unsigned char *)api_secret_key;
+		params.verification_key_length = strlen(api_secret_key);
+		params.validate_exp = 1;
+		params.validate_nbf = 1;
+		params.validate_aud = (char *)api_key;
+		enum l8w8jwt_validation_result validation;
+		struct l8w8jwt_claim *claims;
+		size_t claims_len;
+		int decode = l8w8jwt_decode(&params, &validation, &claims,
+				&claims_len);
+		if (validation != L8W8JWT_NBF_FAILURE)
+			printf("JWT payload nbf is invalid.\n");
+		struct l8w8jwt_claim *dest
+			= l8w8jwt_get_claim(claims, claims_len, "dest", 4);
+		_Bool iss_valid = !strncmp( l8w8jwt_get_claim(claims,
+					claims_len, "iss", 3)->value,
+				dest->value, dest->value_length);
+		printf("JWT payload sub: %s\n", l8w8jwt_get_claim(claims,
+					claims_len, "sub", 3)->value);
+		l8w8jwt_free_claims(claims, claims_len);
+		if (decode != L8W8JWT_SUCCESS
+				|| validation != L8W8JWT_VALID
+				&& validation != L8W8JWT_NBF_FAILURE
+				|| !iss_valid) {
 			free(session_token);
 			free(shop);
 			return MHD_NO;
@@ -348,7 +380,7 @@ static enum MHD_Result handle_request(void *cls, struct MHD_Connection *con,
 
 	char *host = NULL;
 	size_t host_len = 0;
-	bool embedded = false;
+	_Bool embedded = 0;
 	char *dec_host = NULL;
 	size_t dec_host_len = 0;
 	if (params) {

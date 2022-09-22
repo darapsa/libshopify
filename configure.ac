@@ -1,11 +1,10 @@
-AC_INIT([shopify], [0.0], [erik@darapsa.co.id])
+AC_INIT([shopify], [0.0], [prabowo@darapsa.org])
 AM_INIT_AUTOMAKE([-Wall -Werror foreign])
 AC_PROG_CC
 AM_PROG_AR
 LT_INIT
 PKG_CHECK_MODULES([DEPS], [libmicrohttpd libgcrypt gnutls libpcre2-8 libcurl json-c])
 AC_CHECK_HEADERS([fcntl.h])
-AC_CHECK_HEADER_STDBOOL
 AC_C_INLINE
 AC_CHECK_FUNCS([strrchr])
 AC_FUNC_MALLOC
