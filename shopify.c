@@ -98,6 +98,17 @@ static inline _Bool match(const char *shop)
 	return rc >= 0;
 }
 
+static void get_hs256(const char *api_secret_key, const char *data,
+		const size_t data_len, unsigned char hs256[], size_t *hs256_len)
+{
+	gcry_mac_hd_t hd;
+	gcry_mac_open(&hd, GCRY_MAC_HMAC_SHA256, GCRY_MAC_FLAG_SECURE, NULL);
+	gcry_mac_setkey(hd, api_secret_key, strlen(api_secret_key));
+	gcry_mac_write(hd, data, data_len);
+	gcry_mac_read(hd, hs256, hs256_len);
+	gcry_mac_close(hd);
+}
+
 static size_t append(char *data, size_t size, size_t nmemb, char **res)
 {
 	size_t realsize = size * nmemb;
@@ -187,6 +198,7 @@ static enum MHD_Result handle_request(void *cls, struct MHD_Connection *con,
 	qsort(sessions, nsessions, sizeof(struct shopify_session), compare);
 	char *shop = NULL;
 	size_t shop_len = 0;
+	static size_t hs256_len = 32;
 	char *session_token = NULL;
 	struct parameter *param = NULL;
 	size_t nparams = 0;
@@ -233,20 +245,14 @@ static enum MHD_Result handle_request(void *cls, struct MHD_Connection *con,
 			return MHD_NO;
 		}
 
-		gcry_mac_hd_t hd;
-		gcry_mac_open(&hd, GCRY_MAC_HMAC_SHA256, GCRY_MAC_FLAG_SECURE,
-				NULL);
-		gcry_mac_setkey(hd, api_secret_key, api_secret_key_len);
-		gcry_mac_write(hd, query, strlen(query));
-		static size_t hex_len = 32;
-		unsigned char hex[hex_len];
-		gcry_mac_read(hd, hex, &hex_len);
-		gcry_mac_close(hd);
-		char hmacsha256[hex_len * 2 + 1];
-		hmacsha256[0] = '\0';
-		for (size_t i = 0; i < hex_len; i++)
-			sprintf(hmacsha256, "%s%02x", hmacsha256, hex[i]);
-		if (strcmp(hmac, hmacsha256)) {
+		unsigned char hs256[hs256_len];
+		get_hs256(api_secret_key, query, strlen(query), hs256,
+				&hs256_len);
+		char hs256_str[hs256_len * 2 + 1];
+		hs256_str[0] = '\0';
+		for (size_t i = 0; i < hs256_len; i++)
+			sprintf(hs256_str, "%s%02x", hs256_str, hs256[i]);
+		if (strcmp(hmac, hs256_str)) {
 			free(query);
 			clear(params);
 			free(params);
@@ -347,19 +353,12 @@ static enum MHD_Result handle_request(void *cls, struct MHD_Connection *con,
 		}
 
 		char *last_dot = strrchr(session_token, '.');
-		gcry_mac_hd_t hd;
-		gcry_mac_open(&hd, GCRY_MAC_HMAC_SHA256,
-				GCRY_MAC_FLAG_SECURE, NULL);
-		gcry_mac_setkey(hd, api_secret_key, api_secret_key_len);
-		gcry_mac_write(hd, session_token, last_dot - session_token);
-		static size_t hmacsha256_len = 32;
-		unsigned char hmacsha256[hmacsha256_len];
-		gcry_mac_read(hd, hmacsha256, &hmacsha256_len);
-		gcry_mac_close(hd);
+		unsigned char hs256[hs256_len];
+		get_hs256(api_secret_key, session_token,
+				last_dot - session_token, hs256, &hs256_len);
 		char *sig;
 		size_t sig_len;
-		l8w8jwt_base64_encode(1, hmacsha256, hmacsha256_len, &sig,
-				&sig_len);
+		l8w8jwt_base64_encode(1, hs256, hs256_len, &sig, &sig_len);
 		if (strncmp(++last_dot, sig, sig_len)) {
 			free(sig);
 			free(session_token);
