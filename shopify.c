@@ -221,13 +221,11 @@ static enum MHD_Result handle_request(void *cls, struct MHD_Connection *con,
 		}
 		shop_len = strlen(shop);
 		char *query = NULL;
-		size_t query_len = 0;
 		for (int i = 0; i < nparams; i++) {
 			const char *key = params[i].key;
 			const char *val = params[i].val;
 			if (strcmp(key, "hmac")) {
-				if (query)
-					query_len = strlen(query);
+				size_t query_len = query ? strlen(query) : 0;
 				bool ampersand_len = i != nparams - 1;
 				query = realloc(query, query_len + strlen(key)
 						+ strlen("=") + strlen(val)
@@ -254,7 +252,7 @@ static enum MHD_Result handle_request(void *cls, struct MHD_Connection *con,
 		gcry_mac_open(&hd, GCRY_MAC_HMAC_SHA256, GCRY_MAC_FLAG_SECURE,
 				NULL);
 		gcry_mac_setkey(hd, api_secret_key, strlen(api_secret_key));
-		gcry_mac_write(hd, query, query_len);
+		gcry_mac_write(hd, query, strlen(query));
 		static size_t hmacsha256_len = 32;
 		unsigned char hmacsha256[hmacsha256_len];
 		gcry_mac_read(hd, hmacsha256, &hmacsha256_len);
