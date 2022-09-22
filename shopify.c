@@ -411,7 +411,7 @@ static enum MHD_Result handle_request(void *cls, struct MHD_Connection *con,
 		curl_easy_setopt(curl, CURLOPT_URL, url);
 		static const char *post_tmpl
 			= "client_id=%s&client_secret=%s&code=%s";
-		char post[strlen(post_tmpl) - strlen("%s") * 3 + strlen(api_key)
+		char post[strlen(post_tmpl) - strlen("%s") * 3 + api_key_len
 			+ api_secret_key_len + strlen(code) + 1];
 		sprintf(post, post_tmpl, api_key, api_secret_key, code);
 		curl_easy_setopt(curl, CURLOPT_POSTFIELDS, post);
