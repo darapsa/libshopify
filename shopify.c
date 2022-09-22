@@ -1,6 +1,8 @@
 #include <stdbool.h>
 #include <fcntl.h>
 #include <sys/stat.h>
+#define PCRE2_CODE_UNIT_WIDTH 8
+#include <pcre2.h>
 #include <gcrypt.h>
 #include <gnutls/gnutls.h>
 #include <toml.h>
@@ -43,7 +45,6 @@
 #define EMBEDDED_URL "https://%s/apps/%s/"
 #define EMBEDDED_URL_LEN strlen(EMBEDDED_URL) - strlen("%s") * 2
 
-extern inline bool regex_match(const char *);
 extern inline bool sessiontoken_isvalid(const char *, const char *,
 		const char *, const char *);
 
@@ -117,6 +118,21 @@ static inline void clear(const struct parameter params[])
 static int keycmp(const void *struct1, const void *struct2)
 {
 	return strcmp(*(char **)struct1, *(char **)struct2);
+}
+
+static inline _Bool match(const char *shop)
+{
+	pcre2_code *re = pcre2_compile((PCRE2_SPTR)
+			"^[a-zA-Z0-9][a-zA-Z0-9\\-]*\\.myshopify\\.com",
+			PCRE2_ZERO_TERMINATED, 0, &(int){ 0 },
+			&(PCRE2_SIZE){ 0 }, NULL);
+	pcre2_match_data *match_data
+		= pcre2_match_data_create_from_pattern(re, NULL);
+	int rc = pcre2_match(re, (PCRE2_SPTR)shop, strlen(shop), 0, 0,
+			match_data, NULL);
+	pcre2_match_data_free(match_data);
+	pcre2_code_free(re);
+	return rc >= 0;
 }
 
 static size_t append(char *data, size_t size, size_t nmemb, char **res)
@@ -217,7 +233,7 @@ static enum MHD_Result handle_request(void *cls, struct MHD_Connection *con,
 						sizeof(struct parameter),
 						keycmp)))
 			shop = param->val;
-		if (!shop || !regex_match(shop)) {
+		if (!shop || !match(shop)) {
 			clear(params);
 			free(params);
 			return MHD_NO;
@@ -323,7 +339,7 @@ static enum MHD_Result handle_request(void *cls, struct MHD_Connection *con,
 		shop = malloc(shop_len + 1);
 		strlcpy(shop, pair, shop_len + 1);
 		free(tofree);
-		if (!regex_match(shop) || !sessiontoken_isvalid(session_token,
+		if (!match(shop) || !sessiontoken_isvalid(session_token,
 					api_key, api_secret_key, shop)) {
 			free(session_token);
 			free(shop);
