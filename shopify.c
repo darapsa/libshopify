@@ -4,11 +4,11 @@
 #include <microhttpd.h>
 #include <gnutls/gnutls.h>
 #include <toml.h>
+#include <json.h>
 #include "shopify.h"
 #include "crypt.h"
 #include "regex.h"
 #include "request.h"
-#include "accesstoken.h"
 #include "sessiontoken.h"
 
 #define AUTH_URL \
@@ -53,7 +53,6 @@ extern inline void request_gettoken(const char *, const char *, const char *,
 extern inline void request_graphql(const char *, const struct shopify_session *,
 		char **);
 extern inline void request_cleanup();
-extern inline void accesstoken_parse(const char *, struct shopify_session *);
 extern inline bool sessiontoken_isvalid(const char *, const char *,
 		const char *, const char *);
 
@@ -347,8 +346,31 @@ static enum MHD_Result handle_request(void *cls, struct MHD_Connection *con,
 		char *access_token = NULL;
 		request_gettoken(dec_host, api_key, api_secret_key, code,
 				&access_token);
-		accesstoken_parse(access_token, session);
+
+		json_tokener *tokener = json_tokener_new();
+		json_object *obj = json_tokener_parse_ex(tokener, access_token,
+				strlen(access_token));
+		struct json_object_iterator iter = json_object_iter_begin(obj);
+		struct json_object_iterator iter_end
+			= json_object_iter_end(obj);
+		while (!json_object_iter_equal(&iter, &iter_end)) {
+			json_object *val = json_object_iter_peek_value(&iter);
+			if (!strcmp(json_object_iter_peek_name(&iter),
+						"access_token")) {
+				const char *str = json_object_get_string(val);
+				session->access_token = malloc(strlen(str) + 1);
+				strcpy(session->access_token, str);
+			} else if (!strcmp(json_object_iter_peek_name(&iter),
+						"scope")) {
+				const char *str = json_object_get_string(val);
+				session->scopes = malloc(strlen(str) + 1);
+				strcpy(session->scopes, str);
+			}
+			json_object_iter_next(&iter);
+		}
+		json_tokener_free(tokener);
 		free(access_token);
+
 		ret = redirect(dec_host, app_id, con, &res);
 	} else if (session_token) {
 		free(session_token);
