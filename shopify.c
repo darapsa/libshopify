@@ -1,12 +1,12 @@
 #include <stdbool.h>
 #include <fcntl.h>
 #include <sys/stat.h>
-#include <microhttpd.h>
+#include <gcrypt.h>
 #include <gnutls/gnutls.h>
 #include <toml.h>
 #include <json.h>
+#include <microhttpd.h>
 #include "shopify.h"
-#include "crypt.h"
 #include "regex.h"
 #include "request.h"
 #include "sessiontoken.h"
@@ -43,9 +43,6 @@
 #define EMBEDDED_URL "https://%s/apps/%s/"
 #define EMBEDDED_URL_LEN strlen(EMBEDDED_URL) - strlen("%s") * 2
 
-extern inline void crypt_init();
-extern inline bool crypt_macmatch(const char *, const char *, const char *);
-extern inline void crypt_getnonce(char [], const size_t);
 extern inline bool regex_match(const char *);
 extern inline void request_init();
 extern inline void request_gettoken(const char *, const char *, const char *,
@@ -224,11 +221,13 @@ static enum MHD_Result handle_request(void *cls, struct MHD_Connection *con,
 		}
 		shop_len = strlen(shop);
 		char *query = NULL;
+		size_t query_len = 0;
 		for (int i = 0; i < nparams; i++) {
 			const char *key = params[i].key;
 			const char *val = params[i].val;
 			if (strcmp(key, "hmac")) {
-				size_t query_len = query ? strlen(query) : 0;
+				if (query)
+					query_len = strlen(query);
 				bool ampersand_len = i != nparams - 1;
 				query = realloc(query, query_len + strlen(key)
 						+ strlen("=") + strlen(val)
@@ -244,12 +243,34 @@ static enum MHD_Result handle_request(void *cls, struct MHD_Connection *con,
 						sizeof(struct parameter),
 						keycmp)))
 			hmac = param->val;
-		if (!hmac || !crypt_macmatch(api_secret_key, query, hmac)) {
+		if (!hmac) {
 			free(query);
 			clear(params);
 			free(params);
 			return MHD_NO;
 		}
+
+		gcry_mac_hd_t hd;
+		gcry_mac_open(&hd, GCRY_MAC_HMAC_SHA256, GCRY_MAC_FLAG_SECURE,
+				NULL);
+		gcry_mac_setkey(hd, api_key, api_key_len);
+		gcry_mac_write(hd, query, query_len);
+		static size_t hmacsha256_len = 32;
+		unsigned char hmacsha256[hmacsha256_len];
+		gcry_mac_read(hd, hmacsha256, &hmacsha256_len);
+		gcry_mac_close(hd);
+		char hmacsha256_str[hmacsha256_len * 2 + 1];
+		hmacsha256_str[0] ='\0';
+		for (int i = 0; i < hmacsha256_len; i++)
+			sprintf(hmacsha256_str, "%s%02x", hmacsha256_str,
+					hmacsha256[i]);
+		if (strcmp(hmac, hmacsha256_str)) {
+			free(query);
+			clear(params);
+			free(params);
+			return MHD_NO;
+		}
+
 		free(query);
 		if (!strcmp(url, redir_url)
 				&& strcmp(((struct parameter *)bsearch(
@@ -417,7 +438,12 @@ static enum MHD_Result handle_request(void *cls, struct MHD_Connection *con,
 
 		static const size_t nonce_len = 64;
 		char nonce[nonce_len + 1];
-		crypt_getnonce(nonce, nonce_len);
+		nonce[0] = '\0';
+		const size_t hex_len = nonce_len / 2;
+		unsigned char hex[hex_len];
+		gcry_create_nonce(hex, hex_len);
+		for (int i = 0; i < hex_len; i++)
+			sprintf(nonce, "%s%02x", nonce, hex[i]);
 
 		const size_t auth_url_len = AUTH_URL_LEN + strlen(dec_host)
 			+ api_key_len + strlen(scopes) + app_url_len
@@ -466,7 +492,7 @@ void shopify_app(const char *api_key, const char *api_secret_key,
 		const char *scopes, char *(*html)(const char *host),
 		const char *js_dir, const struct shopify_api apis[])
 {
-	crypt_init();
+	gcry_check_version("1.9.4");
 	request_init();
 	struct shopify_session *sessions
 		= malloc(sizeof(struct shopify_session));
