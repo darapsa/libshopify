@@ -1,10 +1,10 @@
 #include <stdbool.h>
 #include <fcntl.h>
 #include <sys/stat.h>
+#include <gnutls/gnutls.h>
 #include <microhttpd.h>
 #include "shopify.h"
 #include "crypt.h"
-#include "base64.h"
 #include "regex.h"
 #include "config.h"
 #include "request.h"
@@ -47,7 +47,6 @@ extern inline void crypt_init();
 extern inline bool crypt_macmatch(const char *, const char *, const char *);
 extern inline void crypt_getnonce(char [], const size_t);
 extern inline bool regex_match(const char *);
-extern inline void base64_getdecoded(const char *, char **);
 extern inline void config_getscopes(const char *, char **);
 extern inline void request_init();
 extern inline void request_gettoken(const char *, const char *, const char *,
@@ -311,6 +310,7 @@ static enum MHD_Result handle_request(void *cls, struct MHD_Connection *con,
 			return MHD_NO;
 		}
 	}
+
 	char *host = NULL;
 	size_t host_len = 0;
 	bool embedded = false;
@@ -323,8 +323,17 @@ static enum MHD_Result handle_request(void *cls, struct MHD_Connection *con,
 		param = bsearch(&(struct parameter){ "embedded" }, params,
 				nparams, sizeof(struct parameter), keycmp);
 		embedded = param && !strcmp(param->val, "1");
-		base64_getdecoded(host, &dec_host);
+
+		gnutls_datum_t result;
+		gnutls_base64_decode2(&(gnutls_datum_t){
+				(unsigned char *)host,
+				strlen(host)
+			}, &result);
+		*dec_host = malloc(result.size + 1);
+		strlcpy(*dec_host, (const char *)result.data, result.size + 1);
+		gnutls_free(result.data);
 	}
+
 	const char *app_id = container->app_id;
 	char header[EMBEDDED_HEADER_LEN + shop_len + 1];
 	sprintf(header, EMBEDDED_HEADER, shop);
