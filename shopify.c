@@ -362,10 +362,12 @@ static enum MHD_Result handle_request(void *cls, struct MHD_Connection *con,
 		l8w8jwt_base64_encode(1, hmacsha256, hmacsha256_len, &sig,
 				&sig_len);
 		if (strncmp(++last_dot, sig, sig_len)) {
+			free(sig);
 			free(session_token);
 			free(shop);
 			return MHD_NO;
 		}
+		free(sig);
 	}
 
 	char *host = NULL;
