@@ -11,38 +11,6 @@
 #include <microhttpd.h>
 #include "shopify.h"
 
-#define AUTH_URL \
-	"https://%s/oauth/authorize?client_id=%s&scope=%s&redirect_uri=%s%s"\
-	"&state=%s"
-#define AUTH_URL_LEN strlen(AUTH_URL) - strlen("%s") * 6
-
-#define REDIR_PAGE \
-	"<!DOCTYPE html>\n"\
-	"<html lang=\"en\">\n"\
-	"\t<head>\n"\
-	"\t\t<meta charset=\"utf-8\"/>\n"\
-	"\t</head>\n"\
-	"\t<body>\n"\
-	"\t\t<script src=\"https://unpkg.com/@shopify/app-bridge@3\">\n"\
-	"\t\t</script>\n"\
-	"\t\t<script>\n"\
-	"\t\t\tvar AppBridge = window['app-bridge'];\n"\
-	"\t\t\tvar Redirect = AppBridge.actions.Redirect;\n"\
-	"\t\t\tRedirect.create(AppBridge.createApp({\n"\
-	"\t\t\t\tapiKey: '%s',\n"\
-	"\t\t\t\thost: '%s'\n"\
-	"\t\t\t})).dispatch(Redirect.Action.REMOTE, '%s');\n"\
-	"\t\t</script>\n"\
-	"\t</body>\n"\
-	"</html>\n"
-#define REDIR_PAGE_LEN strlen(REDIR_PAGE) - strlen("%s") * 3
-
-#define EMBEDDED_HEADER "frame-ancestors https://%s https://admin.shopify.com;"
-#define EMBEDDED_HEADER_LEN strlen(EMBEDDED_HEADER) - strlen("%s")
-
-#define EMBEDDED_URL "https://%s/apps/%s/"
-#define EMBEDDED_URL_LEN strlen(EMBEDDED_URL) - strlen("%s") * 2
-
 struct parameter {
 	char *key;
 	char *val;
@@ -142,8 +110,10 @@ static size_t append(char *data, size_t size, size_t nmemb, char **res)
 static inline int redirect(const char *host, const char *id,
 		struct MHD_Connection *con, struct MHD_Response **res)
 {
-	char url[EMBEDDED_URL_LEN + strlen(host) + strlen(id) + 1];
-	sprintf(url, EMBEDDED_URL, host, id);
+	static const char *tmpl = "https://%s/apps/%s/";
+	char url[strlen(tmpl) - strlen("%s") * 2 + strlen(host) + strlen(id)
+		+ 1];
+	sprintf(url, tmpl, host, id);
 	*res = MHD_create_response_from_buffer(0, "", MHD_RESPMEM_PERSISTENT);
 	MHD_add_response_header(*res, "Location", url);
 	return MHD_queue_response(con, MHD_HTTP_PERMANENT_REDIRECT, *res);
@@ -403,12 +373,15 @@ static enum MHD_Result handle_request(void *cls, struct MHD_Connection *con,
 		gnutls_free(result.data);
 	}
 
-	const char *app_id = container->app_id;
-	char header[EMBEDDED_HEADER_LEN + shop_len + 1];
-	sprintf(header, EMBEDDED_HEADER, shop);
+	static const char *header_tmpl
+		= "frame-ancestors https://%s https://admin.shopify.com;";
+	char header[strlen(header_tmpl) - strlen("%s") + shop_len + 1];
+	sprintf(header, header_tmpl, shop);
 	struct shopify_session *session = bsearch(&(struct shopify_session)
 			{ shop }, sessions, nsessions,
 			sizeof(struct shopify_session), compare);
+	const char *app_id = container->app_id;
+
 	if (!strcmp(url, redir_url)) {
 		const char *code = ((struct parameter *)bsearch(
 					&(struct parameter){ "code" }, params,
@@ -509,11 +482,13 @@ static enum MHD_Result handle_request(void *cls, struct MHD_Connection *con,
 		for (int i = 0; i < hex_len; i++)
 			sprintf(nonce, "%s%02x", nonce, hex[i]);
 
-		const size_t auth_url_len = AUTH_URL_LEN + dec_host_len
-			+ api_key_len + strlen(scopes) + app_url_len
-			+ strlen(redir_url) + nonce_len;
+		static const char *tmpl = "https://%s/oauth/authorize"
+			"?client_id=%s&scope=%s&redirect_uri=%s%s&state=%s";
+		const size_t auth_url_len = strlen(tmpl) - strlen("%s") * 6
+			+ dec_host_len + api_key_len + strlen(scopes)
+			+ app_url_len + strlen(redir_url) + nonce_len;
 		char auth_url[auth_url_len + 1];
-		sprintf(auth_url, AUTH_URL, dec_host, api_key, scopes, app_url,
+		sprintf(auth_url, tmpl, dec_host, api_key, scopes, app_url,
 				redir_url, nonce);
 		free(scopes);
 
@@ -526,10 +501,32 @@ static enum MHD_Result handle_request(void *cls, struct MHD_Connection *con,
 		sessions[nsessions + 1].shop = NULL;
 		container->sessions = sessions;
 		if (embedded) {
-			const size_t page_len = REDIR_PAGE_LEN + api_key_len
-				+ host_len + auth_url_len;
+			static const char *tmpl =
+				"<!DOCTYPE html>\n"
+				"<html lang=\"en\">\n"
+				"\t<head>\n"
+				"\t\t<meta charset=\"utf-8\"/>\n"
+				"\t</head>\n"
+				"\t<body>\n"
+				"\t\t<script src="
+				"\"https://unpkg.com/@shopify/app-bridge@3\">\n"
+				"\t\t</script>\n"
+				"\t\t<script>\n"
+				"\t\t\tvar AppBridge = window['app-bridge'];\n"
+				"\t\t\tvar Redirect = "
+				"AppBridge.actions.Redirect;\n"
+				"\t\t\tRedirect.create(AppBridge.createApp({\n"
+				"\t\t\t\tapiKey: '%s',\n"
+				"\t\t\t\thost: '%s'\n"
+				"\t\t\t})).dispatch(Redirect.Action.REMOTE, "
+				"'%s');\n"
+				"\t\t</script>\n"
+				"\t</body>\n"
+				"</html>\n";
+			const size_t page_len = strlen(tmpl) - strlen("%s") * 3
+				+ api_key_len + host_len + auth_url_len;
 			char page[page_len + 1];
-			sprintf(page, REDIR_PAGE, api_key, host, auth_url);
+			sprintf(page, tmpl, api_key, host, auth_url);
 			res = MHD_create_response_from_buffer(page_len,
 					page, MHD_RESPMEM_MUST_COPY);
 			MHD_add_response_header(res, "Content-Security-Policy",
