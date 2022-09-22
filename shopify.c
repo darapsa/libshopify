@@ -253,7 +253,7 @@ static enum MHD_Result handle_request(void *cls, struct MHD_Connection *con,
 		gcry_mac_hd_t hd;
 		gcry_mac_open(&hd, GCRY_MAC_HMAC_SHA256, GCRY_MAC_FLAG_SECURE,
 				NULL);
-		gcry_mac_setkey(hd, api_key, api_key_len);
+		gcry_mac_setkey(hd, api_secret_key, strlen(api_secret_key));
 		gcry_mac_write(hd, query, query_len);
 		static size_t hmacsha256_len = 32;
 		unsigned char hmacsha256[hmacsha256_len];
