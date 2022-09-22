@@ -7,8 +7,8 @@
 #include <toml.h>
 #include <curl/curl.h>
 #include <json.h>
-#include <microhttpd.h>
 #include <l8w8jwt/decode.h>
+#include <microhttpd.h>
 #include "shopify.h"
 
 #define AUTH_URL \
@@ -594,9 +594,9 @@ void shopify_graphql(const char *query, const struct shopify_session *session,
 		char **json)
 {
 	CURL *curl = curl_easy_init();
-	curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, append);
-	curl_easy_setopt(curl, CURLOPT_WRITEDATA, json);
 	curl_easy_setopt(curl, CURLOPT_POSTFIELDS, query);
+	curl_easy_setopt(curl, CURLOPT_WRITEDATA, json);
+	curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, append);
 
 	static const char *url_tmpl
 		= "https://%s/admin/api/2022-07/graphql.json";
