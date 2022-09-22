@@ -10,7 +10,6 @@
 #include <json.h>
 #include <microhttpd.h>
 #include "shopify.h"
-#include "regex.h"
 #include "sessiontoken.h"
 
 #define AUTH_URL \
