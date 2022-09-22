@@ -24,10 +24,14 @@ static inline bool sessiontoken_isvalid(const char *token, const char *api_key,
 	_Bool iss_isvalid = !strncmp(dest->value,
 			l8w8jwt_get_claim(claims, claims_len, "iss", 3)->value,
 			dest->value_length);
+	if (validation != L8W8JWT_NBF_FAILURE)
+		printf("nbf invalid\n");
 	printf("JWT payload sub: %s\n",
 			l8w8jwt_get_claim(claims, claims_len, "sub", 3)->value);
 	l8w8jwt_free_claims(claims, claims_len);
 
-	return decode == L8W8JWT_SUCCESS && validation == L8W8JWT_VALID
+	return decode == L8W8JWT_SUCCESS
+		&& (validation == L8W8JWT_VALID
+				|| validation == L8W8JWT_NBF_FAILURE)
 		&& iss_isvalid;
 }
