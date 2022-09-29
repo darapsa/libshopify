@@ -504,8 +504,8 @@ static enum MHD_Result handle_request(void *cls, struct MHD_Connection *con,
 						header);
 				MHD_add_response_header(res, "Content-Type",
 						"application/json");
-				return MHD_queue_response(con, MHD_HTTP_OK,
-						res);
+				ret = MHD_queue_response(con, MHD_HTTP_OK, res);
+				break;
 			}
 		i = 0;
 		const struct shopify_carrierservice *carrierservice;
@@ -560,8 +560,8 @@ static enum MHD_Result handle_request(void *cls, struct MHD_Connection *con,
 						header);
 				MHD_add_response_header(res, "Content-Type",
 						"application/json");
-				return MHD_queue_response(con, MHD_HTTP_OK,
-						res);
+				ret = MHD_queue_response(con, MHD_HTTP_OK, res);
+				break;
 			}
 	} else if (session && session->access_token) {
 		if (embedded) {
