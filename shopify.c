@@ -44,10 +44,8 @@
 		json_tokener_free(tokener);\
 		return MHD_NO;\
 	}\
-	char code[strlen(postalcode) + 1];\
-	code[0] = '\0';\
-	strcpy(code, postalcode);\
-	B = code;\
+	B = malloc(strlen(postalcode) + 1);\
+	strcpy(B, postalcode);\
 }
 
 struct parameter {
@@ -550,6 +548,8 @@ static enum MHD_Result handle_request(void *cls, struct MHD_Connection *con,
 				*upload_data_size = 0;
 				char *json = carrierservice->rates(origin,
 						destination, grams, session);
+				free(origin);
+				free(destination);
 				if (!json)
 					return MHD_NO;
 				res = MHD_create_response_from_buffer(
