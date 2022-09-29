@@ -15,6 +15,12 @@ struct shopify_api {
 	void *arg;
 };
 
+struct shopify_carrierservice {
+	char *url;
+	char *(*rates)(const char *, const char *, long,
+			const struct shopify_session *);
+};
+
 #ifdef __cplusplus
 extern "C" {
 #endif
@@ -22,7 +28,8 @@ extern "C" {
 void shopify_app(const char *api_key, const char *api_secret_key,
 		const char *app_url, const char *redir_url, const char *app_id,
 		const char *scopes, char *(*html)(const char *host),
-		const char *js_dir, const struct shopify_api apis[]);
+		const char *js_dir, const struct shopify_api apis[],
+		const struct shopify_carrierservice carrierservices[]);
 void shopify_graphql(const char *query, const struct shopify_session *session,
 		char **json);
 

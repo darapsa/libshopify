@@ -11,6 +11,45 @@
 #include <microhttpd.h>
 #include "shopify.h"
 
+#define GET_CHILD(A, B, C, D) \
+	json_object_object_get_ex(A, B, &C);\
+	if (!C || !json_object_is_type(C, D)) {\
+		json_tokener_free(tokener);\
+		return MHD_NO;\
+	}
+
+#define GET_VALUE(A, B, C) \
+	struct json_object_iterator iter = json_object_iter_begin(A);\
+	struct json_object_iterator iter_end = json_object_iter_end(A);\
+	while (!json_object_iter_equal(&iter, &iter_end)) {\
+		if (!strcmp(json_object_iter_peek_name(&iter), B)) {\
+			C\
+			break;\
+		}\
+		json_object_iter_next(&iter);\
+	}\
+
+#define GET_POSTALCODE \
+	postalcode = json_object_get_string(json_object_iter_peek_value(&iter));
+#define GET_GRAMS \
+	grams += json_object_get_int(json_object_iter_peek_value(&iter));
+
+#define GET_CODE(A, B) \
+{\
+	struct json_object *obj = NULL;\
+	GET_CHILD(rate, A, obj, json_type_object);\
+	const char *postalcode = NULL;\
+	GET_VALUE(obj, "postal_code", GET_POSTALCODE);\
+	if (!postalcode) {\
+		json_tokener_free(tokener);\
+		return MHD_NO;\
+	}\
+	char code[strlen(postalcode) + 1];\
+	code[0] = '\0';\
+	strcpy(code, postalcode);\
+	B = code;\
+}
+
 struct parameter {
 	char *key;
 	char *val;
@@ -26,6 +65,7 @@ struct container {
 	char *(*html)(const char *);
 	const char *js_dir;
 	const struct shopify_api *apis;
+	const struct shopify_carrierservice *carrierservices;
 	struct shopify_session *sessions;
 };
 
@@ -469,6 +509,60 @@ static enum MHD_Result handle_request(void *cls, struct MHD_Connection *con,
 				ret = MHD_queue_response(con, MHD_HTTP_OK, res);
 				break;
 			}
+		i = 0;
+		const struct shopify_carrierservice *carrierservice;
+		while ((carrierservice = &(container->carrierservices[i++])))
+			if (!strcmp(url, carrierservice->url)
+					&& *upload_data_size) {
+				json_tokener *tokener = json_tokener_new();
+				json_object *request
+					= json_tokener_parse_ex(tokener,
+							upload_data,
+							*upload_data_size);
+				enum json_tokener_error error
+					= json_tokener_get_error(tokener);
+				if (!request
+						|| !json_object_is_type(request,
+							json_type_object)
+						|| error
+						!= json_tokener_success) {
+					json_tokener_free(tokener);
+					return MHD_NO;
+				}
+				struct json_object *rate = NULL;
+				GET_CHILD(request, "rate", rate,
+						json_type_object);
+				char *origin, *destination;
+				GET_CODE("origin", origin);
+				GET_CODE("destination", destination);
+				struct json_object *items = NULL;
+				GET_CHILD(rate, "items", items,
+						json_type_array);
+				long grams = 0;
+				for (size_t i = 0; i < json_object_array_length(
+							items); i++) {
+					json_object *item
+						= json_object_array_get_idx(
+								items, i);
+					GET_VALUE(item, "grams", GET_GRAMS);
+				}
+				json_tokener_free(tokener);
+				*upload_data_size = 0;
+				char *json = carrierservice->rates(origin,
+						destination, grams, session);
+				if (!json)
+					return MHD_NO;
+				res = MHD_create_response_from_buffer(
+						strlen(json), json,
+						MHD_RESPMEM_MUST_FREE);
+				MHD_add_response_header(res,
+						"Content-Security-Policy",
+						header);
+				MHD_add_response_header(res, "Content-Type",
+						"application/json");
+				ret = MHD_queue_response(con, MHD_HTTP_OK, res);
+				break;
+			}
 	} else if (session && session->access_token) {
 		if (embedded) {
 			char *html = container->html(host);
@@ -564,7 +658,8 @@ static enum MHD_Result handle_request(void *cls, struct MHD_Connection *con,
 void shopify_app(const char *api_key, const char *api_secret_key,
 		const char *app_url, const char *redir_url, const char *app_id,
 		const char *scopes, char *(*html)(const char *host),
-		const char *js_dir, const struct shopify_api apis[])
+		const char *js_dir, const struct shopify_api apis[],
+		const struct shopify_carrierservice carrierservices[])
 {
 	gcry_check_version("1.9.4");
 	curl_global_init(CURL_GLOBAL_DEFAULT);
@@ -583,6 +678,7 @@ void shopify_app(const char *api_key, const char *api_secret_key,
 				html,
 				js_dir,
 				apis,
+				carrierservices,
 				sessions
 			}, MHD_OPTION_END);
 	getchar();
