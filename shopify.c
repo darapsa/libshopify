@@ -434,7 +434,7 @@ static enum MHD_Result handle_request(void *cls, struct MHD_Connection *con,
 					*upload_data_size, hs256, &hs256_len);
 			char *digest;
 			size_t digest_len;
-			l8w8jwt_base64_encode(1, hs256, hs256_len, &digest,
+			l8w8jwt_base64_encode(0, hs256, hs256_len, &digest,
 					&digest_len);
 			if (strncmp(hmacsha256, digest, digest_len)) {
 				free(hmacsha256);
