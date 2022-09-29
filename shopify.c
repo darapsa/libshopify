@@ -485,8 +485,8 @@ static enum MHD_Result handle_request(void *cls, struct MHD_Connection *con,
 		free(session_token);
 		free(shop);
 		size_t i = 0;
-		const struct shopify_api *api;
-		while ((api = &(container->apis[i++])))
+		const struct shopify_api *api = &(container->apis[i]);
+		while (api->url) {
 			if (!strcmp(url, api->url)
 					&& !strcmp(method, api->method)) {
 				char *json = NULL;
@@ -507,14 +507,17 @@ static enum MHD_Result handle_request(void *cls, struct MHD_Connection *con,
 				ret = MHD_queue_response(con, MHD_HTTP_OK, res);
 				break;
 			}
+			api = &(container->apis[++i]);
+		}
 	} else if (session && session->access_token) {
-		const struct shopify_carrierservice *carrierservice
-			= &(container->carrierservices[0]);
 		CURL *curl = NULL;
 		struct curl_slist *list = NULL;
 		json_tokener *tokener = NULL;
 		json_object *services = NULL;
-		if (carrierservice) {
+		size_t i = 0;
+		const struct shopify_carrierservice *carrierservice
+			= &(container->carrierservices[i]);
+		if (carrierservice->url) {
 			curl = curl_easy_init();
 			char *json = NULL;
 			curl_easy_setopt(curl, CURLOPT_WRITEDATA, &json);
@@ -540,15 +543,14 @@ static enum MHD_Result handle_request(void *cls, struct MHD_Connection *con,
 			json_object_object_get_ex(obj, "carrier_services",
 					&services);
 		}
-		size_t i = 0;
-		while ((carrierservice = &(container->carrierservices[i++]))) {
+		while (carrierservice->url) {
 			_Bool exists = 0;
-			for (size_t i = 0;
-					i < json_object_array_length(services);
-					i++) {
+			for (size_t j = 0;
+					j < json_object_array_length(services);
+					j++) {
 				json_object *service
 					= json_object_array_get_idx(services,
-							i);
+							j);
 				json_object *name = NULL;
 				json_object_object_get_ex(service, "name",
 						&name);
@@ -605,12 +607,12 @@ static enum MHD_Result handle_request(void *cls, struct MHD_Connection *con,
 				GET_CHILD(rate, "items", items,
 						json_type_array);
 				long grams = 0;
-				for (size_t i = 0; i <
+				for (size_t j = 0; j <
 						json_object_array_length
-						(items); i++) {
+						(items); j++) {
 					json_object *item
 						= json_object_array_get_idx
-						(items, i);
+						(items, j);
 					GET_VALUE(item, "grams",
 							GET_GRAMS);
 				}
@@ -636,6 +638,7 @@ static enum MHD_Result handle_request(void *cls, struct MHD_Connection *con,
 				return MHD_queue_response(con,
 						MHD_HTTP_OK, res);
 			}
+			carrierservice = &(container->carrierservices[++i]);
 		}
 		if (list)
 			curl_slist_free_all(list);
