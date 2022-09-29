@@ -507,62 +507,6 @@ static enum MHD_Result handle_request(void *cls, struct MHD_Connection *con,
 				ret = MHD_queue_response(con, MHD_HTTP_OK, res);
 				break;
 			}
-		i = 0;
-		const struct shopify_carrierservice *carrierservice;
-		while ((carrierservice = &(container->carrierservices[i++])))
-			if (!strcmp(url, carrierservice->url)
-					&& *upload_data_size) {
-				json_tokener *tokener = json_tokener_new();
-				json_object *request
-					= json_tokener_parse_ex(tokener,
-							upload_data,
-							*upload_data_size);
-				enum json_tokener_error error
-					= json_tokener_get_error(tokener);
-				if (!request
-						|| !json_object_is_type(request,
-							json_type_object)
-						|| error
-						!= json_tokener_success) {
-					json_tokener_free(tokener);
-					return MHD_NO;
-				}
-				struct json_object *rate = NULL;
-				GET_CHILD(request, "rate", rate,
-						json_type_object);
-				char *origin, *destination;
-				GET_CODE("origin", origin);
-				GET_CODE("destination", destination);
-				struct json_object *items = NULL;
-				GET_CHILD(rate, "items", items,
-						json_type_array);
-				long grams = 0;
-				for (size_t i = 0; i < json_object_array_length(
-							items); i++) {
-					json_object *item
-						= json_object_array_get_idx(
-								items, i);
-					GET_VALUE(item, "grams", GET_GRAMS);
-				}
-				json_tokener_free(tokener);
-				*upload_data_size = 0;
-				char *json = carrierservice->rates(origin,
-						destination, grams, session);
-				free(origin);
-				free(destination);
-				if (!json)
-					return MHD_NO;
-				res = MHD_create_response_from_buffer(
-						strlen(json), json,
-						MHD_RESPMEM_MUST_FREE);
-				MHD_add_response_header(res,
-						"Content-Security-Policy",
-						header);
-				MHD_add_response_header(res, "Content-Type",
-						"application/json");
-				ret = MHD_queue_response(con, MHD_HTTP_OK, res);
-				break;
-			}
 	} else if (session && session->access_token) {
 		if (embedded) {
 			char *html = container->html(host);
@@ -571,8 +515,76 @@ static enum MHD_Result handle_request(void *cls, struct MHD_Connection *con,
 			MHD_add_response_header(res, "Content-Security-Policy",
 					header);
 			ret = MHD_queue_response(con, MHD_HTTP_OK, res);
-		} else
+		} else {
+			size_t i = 0;
+			const struct shopify_carrierservice *carrierservice;
+			while ((carrierservice = &(container->carrierservices[
+							i++])))
+				if (!strcmp(url, carrierservice->url)
+						&& *upload_data_size) {
+					json_tokener *tokener
+						= json_tokener_new();
+					json_object *request
+						= json_tokener_parse_ex(tokener,
+								upload_data,
+								*upload_data_size
+								);
+					enum json_tokener_error error
+						= json_tokener_get_error(
+								tokener);
+					if (!request || !json_object_is_type(
+								request,
+								json_type_object
+								)
+							|| error
+							!= json_tokener_success
+							) {
+						json_tokener_free(tokener);
+						return MHD_NO;
+					}
+					struct json_object *rate = NULL;
+					GET_CHILD(request, "rate", rate,
+							json_type_object);
+					char *origin, *destination;
+					GET_CODE("origin", origin);
+					GET_CODE("destination", destination);
+					struct json_object *items = NULL;
+					GET_CHILD(rate, "items", items,
+							json_type_array);
+					long grams = 0;
+					for (size_t i = 0; i <
+							json_object_array_length
+							(items); i++) {
+						json_object *item
+							= json_object_array_get_idx
+							(items, i);
+						GET_VALUE(item, "grams",
+								GET_GRAMS);
+					}
+					json_tokener_free(tokener);
+					*upload_data_size = 0;
+					char *json
+						= carrierservice->rates(origin,
+								destination,
+								grams, session);
+					free(origin);
+					free(destination);
+					if (!json)
+						return MHD_NO;
+					res = MHD_create_response_from_buffer(
+							strlen(json), json,
+							MHD_RESPMEM_MUST_FREE);
+					MHD_add_response_header(res,
+							"Content-Security"
+							"-Policy", header);
+					MHD_add_response_header(res,
+							"Content-Type",
+							"application/json");
+					return MHD_queue_response(con,
+							MHD_HTTP_OK, res);
+				}
 			ret = redirect(dec_host, app_id, con, &res);
+		}
 	} else {
 		FILE *fp = fopen(container->scopes, "r");
 		toml_table_t* toml = toml_parse_file(fp, NULL, 0);
