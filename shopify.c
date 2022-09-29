@@ -179,13 +179,13 @@ static enum MHD_Result handle_request(void *cls, struct MHD_Connection *con,
 		const char *upload_data, size_t *upload_data_size,
 		void **con_cls)
 {
-	struct parameter *params = *con_cls;
-	if (!params) {
-		params = malloc(sizeof(struct parameter));
-		params[0].key = NULL;
-		*con_cls = params;
+	char *post_data = *con_cls;
+	if (!post_data) {
+		post_data = malloc(sizeof(char));
+		*con_cls = post_data;
 		return MHD_YES;
 	}
+	const size_t post_data_len = strlen(post_data);
 	struct container *container = cls;
 	struct MHD_Response *res = NULL;
 	enum MHD_Result ret = MHD_NO;
@@ -227,6 +227,8 @@ static enum MHD_Result handle_request(void *cls, struct MHD_Connection *con,
 		return ret;
 	}
 
+	struct parameter *params = malloc(sizeof(struct parameter));
+	params[0].key = NULL;
 	MHD_get_connection_values(con, MHD_GET_ARGUMENT_KIND, iterate, &params);
 	const char *api_key = container->api_key;
 	const size_t api_key_len = strlen(api_key);
@@ -323,6 +325,13 @@ static enum MHD_Result handle_request(void *cls, struct MHD_Connection *con,
 	} else {
 		free(params);
 		params = NULL;
+		if (*upload_data_size) {
+			post_data = realloc(post_data, *upload_data_size + 1);
+			strlcpy(post_data, upload_data, *upload_data_size + 1);
+			*con_cls = post_data;
+			*upload_data_size = 0;
+			return MHD_YES;
+		}
 
 		char *referer = NULL;
 		char *hmacsha256 = NULL;
@@ -337,8 +346,7 @@ static enum MHD_Result handle_request(void *cls, struct MHD_Connection *con,
 				|| strncmp(referer, app_url, app_url_len)
 				|| referer[app_url_len] != '?'
 				|| !&referer[app_url_len + 1])
-				&& (!hmacsha256 || !shop || !match(shop)
-					|| !*upload_data_size)) {
+				&& (!hmacsha256 || !shop || !match(shop))) {
 			if (session_token)
 				free(session_token);
 			if (referer)
@@ -431,8 +439,8 @@ static enum MHD_Result handle_request(void *cls, struct MHD_Connection *con,
 		} else {
 			shop_len = strlen(shop);
 			unsigned char hs256[hs256_len];
-			get_hs256(api_secret_key, upload_data,
-					*upload_data_size, hs256, &hs256_len);
+			get_hs256(api_secret_key, post_data, post_data_len,
+					hs256, &hs256_len);
 			char *digest;
 			size_t digest_len;
 			l8w8jwt_base64_encode(0, hs256, hs256_len, &digest,
@@ -530,11 +538,9 @@ static enum MHD_Result handle_request(void *cls, struct MHD_Connection *con,
 			if (!strcmp(url, api->url)
 					&& !strcmp(method, api->method)) {
 				char *json = NULL;
-				if (!strcmp(method, "POST")
-						&& upload_data_size) {
-					api->cb(upload_data, session, &json);
-					*upload_data_size = 0;
-				} else
+				if (!strcmp(method, "POST"))
+					api->cb(post_data, session, &json);
+				else
 					api->cb(api->arg, session, &json);
 				res = MHD_create_response_from_buffer(
 						strlen(json), json,
@@ -620,14 +626,14 @@ static enum MHD_Result handle_request(void *cls, struct MHD_Connection *con,
 						list);
 				curl_easy_perform(curl);
 			}
-			if (!strcmp(url, carrierservice->url)
-					&& *upload_data_size) {
+			if (!strcmp(url, carrierservice->url)) {
 				curl_slist_free_all(list);
 				curl_easy_cleanup(curl);
 				json_tokener_reset(tokener);
 				json_object *request = json_tokener_parse_ex(
-						tokener, upload_data,
-						*upload_data_size);
+						tokener, post_data,
+						post_data_len);
+				free(post_data);
 				enum json_tokener_error error
 					= json_tokener_get_error(tokener);
 				if (!request || !json_object_is_type(request,
@@ -657,7 +663,6 @@ static enum MHD_Result handle_request(void *cls, struct MHD_Connection *con,
 							GET_GRAMS);
 				}
 				json_tokener_free(tokener);
-				*upload_data_size = 0;
 				char *json
 					= carrierservice->rates(origin,
 							destination,
@@ -775,6 +780,7 @@ static enum MHD_Result handle_request(void *cls, struct MHD_Connection *con,
 		clear(params);
 		free(params);
 	}
+	free(post_data);
 	MHD_destroy_response(res);
 	return ret;
 }
