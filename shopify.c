@@ -99,6 +99,12 @@ static enum MHD_Result iterate(void *cls, enum MHD_ValueKind kind,
 			} else if (!strcmp(key, "Referer")) {
 				*array[1] = malloc(strlen(val) + 1);
 				strcpy(*array[1], val);
+			} else if (!strcmp(key, "X-Shopify-Hmac-Sha256")) {
+				*array[2] = malloc(strlen(val) + 1);
+				strcpy(*array[2], val);
+			} else if (!strcmp(key, "X-Shopify-Shop-Domain")) {
+				*array[3] = malloc(strlen(val) + 1);
+				strcpy(*array[3], val);
 			}
 			break;
 		default:
@@ -319,91 +325,124 @@ static enum MHD_Result handle_request(void *cls, struct MHD_Connection *con,
 		params = NULL;
 
 		char *referer = NULL;
+		char *hmacsha256 = NULL;
 		MHD_get_connection_values(con, MHD_HEADER_KIND, iterate,
-				(char **[]){ &session_token, &referer });
- 		if (!session_token || !referer
+			(char **[]){
+				&session_token,
+				&referer,
+				&hmacsha256,
+				&shop
+			});
+		if ((!session_token || !referer
 				|| strncmp(referer, app_url, app_url_len)
 				|| referer[app_url_len] != '?'
-				|| !&referer[app_url_len + 1]) {
+				|| !&referer[app_url_len + 1])
+				&& (!hmacsha256 || !shop || !match(shop)
+					|| !*upload_data_size)) {
 			if (session_token)
 				free(session_token);
 			if (referer)
 				free(referer);
+			if (hmacsha256)
+				free(hmacsha256);
+			if (shop)
+				free(shop);
 			return MHD_NO;
 		}
 
-		referer = &referer[app_url_len + 1];
-		char *tofree = referer;
-		char *pair = NULL;
-		static const char *key = "shop=";
-		const size_t key_len = strlen(key);
-		while ((pair = strsep(&referer, "&")))
-			if (!strncmp(pair, key, key_len))
-				break;
-		if (!pair || !&pair[key_len]) {
-			free(session_token);
+		if (session_token) {
+			referer = &referer[app_url_len + 1];
+			char *tofree = referer;
+			char *pair = NULL;
+			static const char *key = "shop=";
+			const size_t key_len = strlen(key);
+			while ((pair = strsep(&referer, "&")))
+				if (!strncmp(pair, key, key_len))
+					break;
+			if (!pair || !&pair[key_len]) {
+				free(session_token);
+				free(tofree);
+				return MHD_NO;
+			}
+
+			pair = &pair[key_len];
+			shop_len = strchrnul(pair, '&') - pair;
+			shop = malloc(shop_len + 1);
+			strlcpy(shop, pair, shop_len + 1);
 			free(tofree);
-			return MHD_NO;
-		}
+			if (!match(shop)) {
+				free(session_token);
+				free(shop);
+				return MHD_NO;
+			}
 
-		pair = &pair[key_len];
-		shop_len = strchrnul(pair, '&') - pair;
-		shop = malloc(shop_len + 1);
-		strlcpy(shop, pair, shop_len + 1);
-		free(tofree);
-		if (!match(shop)) {
-			free(session_token);
-			free(shop);
-			return MHD_NO;
-		}
+			struct l8w8jwt_decoding_params params;
+			l8w8jwt_decoding_params_init(&params);
+			params.alg = L8W8JWT_ALG_HS256;
+			params.jwt = (char *)session_token;
+			params.jwt_length = strlen(session_token);
+			params.verification_key
+				= (unsigned char *)api_secret_key;
+			params.verification_key_length = api_secret_key_len;
+			params.validate_exp = 1;
+			params.validate_nbf = 1;
+			params.validate_aud = (char *)api_key;
+			enum l8w8jwt_validation_result validation;
+			struct l8w8jwt_claim *claims;
+			size_t claims_len;
+			int decode = l8w8jwt_decode(&params, &validation,
+					&claims, &claims_len);
+			if (validation != L8W8JWT_NBF_FAILURE)
+				printf("JWT payload nbf is invalid.\n");
+			struct l8w8jwt_claim *dest = l8w8jwt_get_claim(claims,
+					claims_len, "dest", 4);
+			_Bool iss_valid = !strncmp(l8w8jwt_get_claim(claims,
+						claims_len, "iss", 3)->value,
+					dest->value, dest->value_length);
+			printf("JWT payload sub: %s\n",
+					l8w8jwt_get_claim(claims, claims_len,
+						"sub", 3)->value);
+			l8w8jwt_free_claims(claims, claims_len);
+			if (decode != L8W8JWT_SUCCESS
+					|| validation != L8W8JWT_VALID
+					&& validation != L8W8JWT_NBF_FAILURE
+					|| !iss_valid) {
+				free(session_token);
+				free(shop);
+				return MHD_NO;
+			}
 
-		struct l8w8jwt_decoding_params params;
-		l8w8jwt_decoding_params_init(&params);
-		params.alg = L8W8JWT_ALG_HS256;
-		params.jwt = (char *)session_token;
-		params.jwt_length = strlen(session_token);
-		params.verification_key = (unsigned char *)api_secret_key;
-		params.verification_key_length = api_secret_key_len;
-		params.validate_exp = 1;
-		params.validate_nbf = 1;
-		params.validate_aud = (char *)api_key;
-		enum l8w8jwt_validation_result validation;
-		struct l8w8jwt_claim *claims;
-		size_t claims_len;
-		int decode = l8w8jwt_decode(&params, &validation, &claims,
-				&claims_len);
-		if (validation != L8W8JWT_NBF_FAILURE)
-			printf("JWT payload nbf is invalid.\n");
-		struct l8w8jwt_claim *dest = l8w8jwt_get_claim(claims,
-				claims_len, "dest", 4);
-		_Bool iss_valid = !strncmp(l8w8jwt_get_claim(claims, claims_len,
-					"iss", 3)->value,
-				dest->value, dest->value_length);
-		printf("JWT payload sub: %s\n", l8w8jwt_get_claim(claims,
-					claims_len, "sub", 3)->value);
-		l8w8jwt_free_claims(claims, claims_len);
-		if (decode != L8W8JWT_SUCCESS || validation != L8W8JWT_VALID
-				&& validation != L8W8JWT_NBF_FAILURE
-				|| !iss_valid) {
-			free(session_token);
-			free(shop);
-			return MHD_NO;
-		}
-
-		char *last_dot = strrchr(session_token, '.');
-		unsigned char hs256[hs256_len];
-		get_hs256(api_secret_key, session_token,
-				last_dot - session_token, hs256, &hs256_len);
-		char *sig;
-		size_t sig_len;
-		l8w8jwt_base64_encode(1, hs256, hs256_len, &sig, &sig_len);
-		if (strncmp(++last_dot, sig, sig_len)) {
+			char *last_dot = strrchr(session_token, '.');
+			unsigned char hs256[hs256_len];
+			get_hs256(api_secret_key, session_token,
+					last_dot - session_token, hs256,
+					&hs256_len);
+			char *sig;
+			size_t sig_len;
+			l8w8jwt_base64_encode(1, hs256, hs256_len, &sig,
+					&sig_len);
+			if (strncmp(++last_dot, sig, sig_len)) {
+				free(sig);
+				free(session_token);
+				free(shop);
+				return MHD_NO;
+			}
 			free(sig);
-			free(session_token);
-			free(shop);
-			return MHD_NO;
+		} else {
+			unsigned char hs256[hs256_len];
+			get_hs256(api_secret_key, upload_data,
+					*upload_data_size, hs256, &hs256_len);
+			char *digest;
+			size_t digest_len;
+			l8w8jwt_base64_encode(1, hs256, hs256_len, &digest,
+					&digest_len);
+			if (strncmp(hmacsha256, digest, digest_len)) {
+				free(hmacsha256);
+				free(shop);
+				return MHD_NO;
+			}
+			free(hmacsha256);
 		}
-		free(sig);
 	}
 
 	char *host = NULL;
