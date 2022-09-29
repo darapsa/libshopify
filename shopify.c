@@ -675,8 +675,9 @@ static enum MHD_Result handle_request(void *cls, struct MHD_Connection *con,
 				MHD_add_response_header(res,
 						"Content-Type",
 						"application/json");
-				return MHD_queue_response(con,
-						MHD_HTTP_OK, res);
+				ret = MHD_queue_response(con, MHD_HTTP_OK, res);
+				MHD_destroy_response(res);
+				return ret;
 			}
 			carrierservice = &(container->carrierservices[++i]);
 		}
@@ -774,6 +775,7 @@ static enum MHD_Result handle_request(void *cls, struct MHD_Connection *con,
 		clear(params);
 		free(params);
 	}
+	MHD_destroy_response(res);
 	return ret;
 }
 
