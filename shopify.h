@@ -17,6 +17,7 @@ struct shopify_api {
 
 struct shopify_carrierservice {
 	char *url;
+	char *name;
 	char *(*rates)(const char *, const char *, long,
 			const struct shopify_session *);
 };

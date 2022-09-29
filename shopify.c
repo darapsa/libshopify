@@ -508,6 +508,39 @@ static enum MHD_Result handle_request(void *cls, struct MHD_Connection *con,
 				break;
 			}
 	} else if (session && session->access_token) {
+		size_t i = 0;
+		const struct shopify_carrierservice *carrierservice
+			= &(container->carrierservices[i]);
+		CURL *curl = NULL;
+		struct curl_slist *list = NULL;
+		json_tokener *tokener = NULL;
+		json_object *services = NULL;
+		if (carrierservice) {
+			curl = curl_easy_init();
+			char *json = NULL;
+			curl_easy_setopt(curl, CURLOPT_WRITEDATA, &json);
+			curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, append);
+			static const char *url_tmpl = "https://%s/admin/api"
+				"/2022-07/carrier_services.json";
+			char url[strlen(url_tmpl) - strlen("%s") + shop_len
+				+ 1];
+			sprintf(url, url_tmpl, shop);
+			curl_easy_setopt(curl, CURLOPT_URL, url);
+			static const char *hdr_tmpl
+				= "X-Shopify-Access-Token: %s";
+			char header[strlen(hdr_tmpl) - strlen("%s")
+				+ strlen(session->access_token) + 1];
+			sprintf(header, hdr_tmpl, session->access_token);
+			list = curl_slist_append(list, header);
+			curl_easy_setopt(curl, CURLOPT_HTTPHEADER, list);
+			curl_easy_perform(curl);
+			tokener = json_tokener_new();
+			json_object *obj = json_tokener_parse_ex(tokener, json,
+					strlen(json));
+			free(json);
+			json_object_object_get_ex(obj, "carrier_services",
+					&services);
+		}
 		if (embedded) {
 			char *html = container->html(host);
 			res = MHD_create_response_from_buffer(strlen(html),
@@ -516,10 +549,52 @@ static enum MHD_Result handle_request(void *cls, struct MHD_Connection *con,
 					header);
 			ret = MHD_queue_response(con, MHD_HTTP_OK, res);
 		} else {
-			size_t i = 0;
-			const struct shopify_carrierservice *carrierservice;
 			while ((carrierservice = &(container->carrierservices[
-							i++])))
+							i++]))) {
+				_Bool exists = 0;
+				for (size_t i = 0; i < json_object_array_length(
+							services); i++) {
+					json_object *service
+						= json_object_array_get_idx(
+								services, i);
+					json_object *url = NULL;
+					json_object_object_get_ex(service,
+							"callback_url", &url);
+					if (!strcmp(json_object_get_string(
+									url),
+								carrierservice
+								->url)) {
+						exists = 1;
+						break;
+					}
+				}
+				if (!exists) {
+					static const char *post_tmpl =
+						"{\"carrier_service\":{"
+						"\"name\":\"%s\","
+						"\"callback_url\":\"%s%s\""
+						"}}";
+					char post[strlen(post_tmpl)
+						- strlen("%s") * 3
+						+ strlen(carrierservice->name)
+						+ app_url_len
+						+ strlen(carrierservice->url)
+						+ 1];
+					sprintf(post, post_tmpl,
+							carrierservice->name,
+							app_url,
+							carrierservice->url);
+					curl_easy_setopt(curl,
+							CURLOPT_POSTFIELDS,
+							post);
+					list = curl_slist_append(list,
+							"Content-Type: "
+							"application/json");
+					curl_easy_setopt(curl,
+							CURLOPT_HTTPHEADER,
+							list);
+					curl_easy_perform(curl);
+				}
 				if (!strcmp(url, carrierservice->url)
 						&& *upload_data_size) {
 					json_tokener *tokener
@@ -583,6 +658,13 @@ static enum MHD_Result handle_request(void *cls, struct MHD_Connection *con,
 					return MHD_queue_response(con,
 							MHD_HTTP_OK, res);
 				}
+			}
+			if (list)
+				curl_slist_free_all(list);
+			if (curl)
+				curl_easy_cleanup(curl);
+			if (tokener)
+				json_tokener_free(tokener);
 			ret = redirect(dec_host, app_id, con, &res);
 		}
 	} else {
