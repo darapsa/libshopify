@@ -508,9 +508,8 @@ static enum MHD_Result handle_request(void *cls, struct MHD_Connection *con,
 				break;
 			}
 	} else if (session && session->access_token) {
-		size_t i = 0;
 		const struct shopify_carrierservice *carrierservice
-			= &(container->carrierservices[i]);
+			= &(container->carrierservices[0]);
 		CURL *curl = NULL;
 		struct curl_slist *list = NULL;
 		json_tokener *tokener = NULL;
@@ -541,6 +540,109 @@ static enum MHD_Result handle_request(void *cls, struct MHD_Connection *con,
 			json_object_object_get_ex(obj, "carrier_services",
 					&services);
 		}
+		size_t i = 0;
+		while ((carrierservice = &(container->carrierservices[i++]))) {
+			_Bool exists = 0;
+			for (size_t i = 0;
+					i < json_object_array_length(services);
+					i++) {
+				json_object *service
+					= json_object_array_get_idx(services,
+							i);
+				json_object *url = NULL;
+				json_object_object_get_ex(service,
+						"callback_url", &url);
+				if (!strcmp(json_object_get_string(url),
+							carrierservice->url)) {
+					exists = 1;
+					break;
+				}
+			}
+			if (!exists) {
+				static const char *post_tmpl =
+					"{\"carrier_service\":{"
+					"\"name\":\"%s\","
+					"\"callback_url\":\"%s%s\""
+					"}}";
+				char post[strlen(post_tmpl) - strlen("%s") * 3
+					+ strlen(carrierservice->name)
+					+ app_url_len
+					+ strlen(carrierservice->url) + 1];
+				sprintf(post, post_tmpl, carrierservice->name,
+						app_url, carrierservice->url);
+				curl_easy_setopt(curl, CURLOPT_POSTFIELDS,
+						post);
+				list = curl_slist_append(list, "Content-Type: "
+						"application/json");
+				curl_easy_setopt(curl, CURLOPT_HTTPHEADER,
+						list);
+				curl_easy_perform(curl);
+			}
+			if (!strcmp(url, carrierservice->url)
+					&& *upload_data_size) {
+				curl_slist_free_all(list);
+				curl_easy_cleanup(curl);
+				json_tokener_reset(tokener);
+				json_object *request = json_tokener_parse_ex(
+						tokener, upload_data,
+						*upload_data_size);
+				enum json_tokener_error error
+					= json_tokener_get_error(tokener);
+				if (!request || !json_object_is_type(request,
+							json_type_object)
+						|| error
+						!= json_tokener_success) {
+					json_tokener_free(tokener);
+					return MHD_NO;
+				}
+				struct json_object *rate = NULL;
+				GET_CHILD(request, "rate", rate,
+						json_type_object);
+				char *origin, *destination;
+				GET_CODE("origin", origin);
+				GET_CODE("destination", destination);
+				struct json_object *items = NULL;
+				GET_CHILD(rate, "items", items,
+						json_type_array);
+				long grams = 0;
+				for (size_t i = 0; i <
+						json_object_array_length
+						(items); i++) {
+					json_object *item
+						= json_object_array_get_idx
+						(items, i);
+					GET_VALUE(item, "grams",
+							GET_GRAMS);
+				}
+				json_tokener_free(tokener);
+				*upload_data_size = 0;
+				char *json
+					= carrierservice->rates(origin,
+							destination,
+							grams, session);
+				free(origin);
+				free(destination);
+				if (!json)
+					return MHD_NO;
+				res = MHD_create_response_from_buffer(
+						strlen(json), json,
+						MHD_RESPMEM_MUST_FREE);
+				MHD_add_response_header(res,
+						"Content-Security"
+						"-Policy", header);
+				MHD_add_response_header(res,
+						"Content-Type",
+						"application/json");
+				return MHD_queue_response(con,
+						MHD_HTTP_OK, res);
+			}
+		}
+		if (list)
+			curl_slist_free_all(list);
+		if (curl)
+			curl_easy_cleanup(curl);
+		if (tokener)
+			json_tokener_free(tokener);
 		if (embedded) {
 			char *html = container->html(host);
 			res = MHD_create_response_from_buffer(strlen(html),
@@ -548,125 +650,8 @@ static enum MHD_Result handle_request(void *cls, struct MHD_Connection *con,
 			MHD_add_response_header(res, "Content-Security-Policy",
 					header);
 			ret = MHD_queue_response(con, MHD_HTTP_OK, res);
-		} else {
-			while ((carrierservice = &(container->carrierservices[
-							i++]))) {
-				_Bool exists = 0;
-				for (size_t i = 0; i < json_object_array_length(
-							services); i++) {
-					json_object *service
-						= json_object_array_get_idx(
-								services, i);
-					json_object *url = NULL;
-					json_object_object_get_ex(service,
-							"callback_url", &url);
-					if (!strcmp(json_object_get_string(
-									url),
-								carrierservice
-								->url)) {
-						exists = 1;
-						break;
-					}
-				}
-				if (!exists) {
-					static const char *post_tmpl =
-						"{\"carrier_service\":{"
-						"\"name\":\"%s\","
-						"\"callback_url\":\"%s%s\""
-						"}}";
-					char post[strlen(post_tmpl)
-						- strlen("%s") * 3
-						+ strlen(carrierservice->name)
-						+ app_url_len
-						+ strlen(carrierservice->url)
-						+ 1];
-					sprintf(post, post_tmpl,
-							carrierservice->name,
-							app_url,
-							carrierservice->url);
-					curl_easy_setopt(curl,
-							CURLOPT_POSTFIELDS,
-							post);
-					list = curl_slist_append(list,
-							"Content-Type: "
-							"application/json");
-					curl_easy_setopt(curl,
-							CURLOPT_HTTPHEADER,
-							list);
-					curl_easy_perform(curl);
-				}
-				if (!strcmp(url, carrierservice->url)
-						&& *upload_data_size) {
-					json_tokener *tokener
-						= json_tokener_new();
-					json_object *request
-						= json_tokener_parse_ex(tokener,
-								upload_data,
-								*upload_data_size
-								);
-					enum json_tokener_error error
-						= json_tokener_get_error(
-								tokener);
-					if (!request || !json_object_is_type(
-								request,
-								json_type_object
-								)
-							|| error
-							!= json_tokener_success
-							) {
-						json_tokener_free(tokener);
-						return MHD_NO;
-					}
-					struct json_object *rate = NULL;
-					GET_CHILD(request, "rate", rate,
-							json_type_object);
-					char *origin, *destination;
-					GET_CODE("origin", origin);
-					GET_CODE("destination", destination);
-					struct json_object *items = NULL;
-					GET_CHILD(rate, "items", items,
-							json_type_array);
-					long grams = 0;
-					for (size_t i = 0; i <
-							json_object_array_length
-							(items); i++) {
-						json_object *item
-							= json_object_array_get_idx
-							(items, i);
-						GET_VALUE(item, "grams",
-								GET_GRAMS);
-					}
-					json_tokener_free(tokener);
-					*upload_data_size = 0;
-					char *json
-						= carrierservice->rates(origin,
-								destination,
-								grams, session);
-					free(origin);
-					free(destination);
-					if (!json)
-						return MHD_NO;
-					res = MHD_create_response_from_buffer(
-							strlen(json), json,
-							MHD_RESPMEM_MUST_FREE);
-					MHD_add_response_header(res,
-							"Content-Security"
-							"-Policy", header);
-					MHD_add_response_header(res,
-							"Content-Type",
-							"application/json");
-					return MHD_queue_response(con,
-							MHD_HTTP_OK, res);
-				}
-			}
-			if (list)
-				curl_slist_free_all(list);
-			if (curl)
-				curl_easy_cleanup(curl);
-			if (tokener)
-				json_tokener_free(tokener);
+		} else
 			ret = redirect(dec_host, app_id, con, &res);
-		}
 	} else {
 		FILE *fp = fopen(container->scopes, "r");
 		toml_table_t* toml = toml_parse_file(fp, NULL, 0);
