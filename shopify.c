@@ -550,8 +550,8 @@ static enum MHD_Result handle_request(void *cls, struct MHD_Connection *con,
 					= json_object_array_get_idx(services,
 							i);
 				json_object *name = NULL;
-				json_object_object_get_ex(service,
-						"callback_url", &name);
+				json_object_object_get_ex(service, "name",
+						&name);
 				if (!strcmp(json_object_get_string(name),
 							carrierservice->name)) {
 					exists = 1;
