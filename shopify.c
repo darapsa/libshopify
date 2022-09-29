@@ -429,6 +429,7 @@ static enum MHD_Result handle_request(void *cls, struct MHD_Connection *con,
 			}
 			free(sig);
 		} else {
+			shop_len = strlen(shop);
 			unsigned char hs256[hs256_len];
 			get_hs256(api_secret_key, upload_data,
 					*upload_data_size, hs256, &hs256_len);
@@ -436,7 +437,7 @@ static enum MHD_Result handle_request(void *cls, struct MHD_Connection *con,
 			size_t digest_len;
 			l8w8jwt_base64_encode(0, hs256, hs256_len, &digest,
 					&digest_len);
-			if (strncmp(hmacsha256, digest, digest_len)) {
+			if (strncmp(hmacsha256, digest, strlen(hmacsha256))) {
 				free(hmacsha256);
 				free(shop);
 				return MHD_NO;
