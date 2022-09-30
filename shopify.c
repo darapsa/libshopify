@@ -446,10 +446,12 @@ static enum MHD_Result handle_request(void *cls, struct MHD_Connection *con,
 			l8w8jwt_base64_encode(0, hs256, hs256_len, &digest,
 					&digest_len);
 			if (strncmp(hmacsha256, digest, strlen(hmacsha256))) {
+				free(digest);
 				free(hmacsha256);
 				free(shop);
 				return MHD_NO;
 			}
+			free(digest);
 			free(hmacsha256);
 		}
 	}
